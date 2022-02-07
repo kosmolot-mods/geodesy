@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "geodesy",
+  "version": "${version}",
+  "name": "Geodesy",
+  "description": "Geode Farm Design Tool",
+  "authors": [
+    "Kosmolot"
+  ],
+  "contact": {
+    "website": "https://www.curseforge.com/minecraft/mc-mods/geodesy",
+    "repo": "https://github.com/kosma/geodesy-fabric"
+  },
+  "license": "MIT",
+  "icon": "assets/geodesy/icon.png",
+  "entrypoints": {
+    "main": [
+      "pl.kosma.geodesy.Geodesy"
+    ]
+  },
+  "mixins": [
+    "geodesy.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.12.12",
+    "fabric": "*",
+    "minecraft": "1.18.x"
+  }
+}
