@@ -1,7 +1,7 @@
 # Geodesy
 
 Small Fabric mod for calculating amethyst farm flying machine layout.
-Inspired by [ilmango's video](https://youtu.be/c8iVfBqYx90?t=690) and
+Inspired by [ilmango's video](https://www.youtube.com/watch?v=fY90xF3ug84) and
 the flying machine based farm made by neffty87.
 
 ## Usage
