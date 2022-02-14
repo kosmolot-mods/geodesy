@@ -8,15 +8,17 @@ import net.minecraft.block.AmethystClusterBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.block.enums.WallMountLocation;
 import net.minecraft.command.argument.BlockPosArgumentType;
+import net.minecraft.state.property.Properties;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
 
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -24,15 +26,10 @@ import static net.minecraft.block.Block.NOTIFY_LISTENERS;
 import static net.minecraft.server.command.CommandManager.*;
 
 public class Geodesy implements ModInitializer {
-    final int SCAN_RANGE = 16;
     final int BUILD_MARGIN = 11;
     final int WALL_OFFSET = 2;
 
-    private class IterableBlockBox extends BlockBox {
-
-        public IterableBlockBox(BlockPos pos) {
-            super(pos);
-        }
+    private static class IterableBlockBox extends BlockBox {
 
         public IterableBlockBox(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
             super(minX, minY, minZ, maxX, maxY, maxZ);
@@ -42,7 +39,7 @@ public class Geodesy implements ModInitializer {
             this(box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ());
         }
 
-        public void iterate(Consumer<BlockPos> consumer) {
+        public void forEachPosition(Consumer<BlockPos> consumer) {
             for (int x=this.getMinX(); x<=this.getMaxX(); x++)
                 for (int y=this.getMinY(); y<=this.getMaxY(); y++)
                     for (int z=this.getMinZ(); z<=this.getMaxZ(); z++)
@@ -76,71 +73,45 @@ public class Geodesy implements ModInitializer {
             dispatcher.register(literal("geodesy")
                     .requires(source -> source.hasPermissionLevel(2))
                     .then(argument("startPos", BlockPosArgumentType.blockPos())
-                            .then(argument("axis1", StringArgumentType.string())
-                                    .then(argument("axis2", StringArgumentType.string()).executes(context -> {
-                                                World world = context.getSource().getPlayer().getWorld();
-                                                BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "startPos");
-                                                String axis1 = StringArgumentType.getString(context, "axis1");
-                                                String axis2 = StringArgumentType.getString(context, "axis2");
-                                                this.runGeodesy(world, startPos, Direction.Axis.fromName(axis1), Direction.Axis.fromName(axis2));
-                                                return Command.SINGLE_SUCCESS;
-                                            })
-                                    ))));
+                            .then(argument("endPos", BlockPosArgumentType.blockPos())
+                                    .then(argument("axes", StringArgumentType.string()).executes(context -> {
+                                            World world = context.getSource().getPlayer().getWorld();
+                                            BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "startPos");
+                                            BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "endPos");
+                                            String axes = StringArgumentType.getString(context, "axes");
+                                            Direction.Axis[] axisList = new Direction.Axis[axes.length()];
+                                            Arrays.setAll(axisList, i -> Direction.Axis.fromName(axes.substring(i, i+1)));
+                                            this.runGeodesy(world, startPos, endPos, axisList);
+                                            return Command.SINGLE_SUCCESS;
+                                        })
+            ))));
         });
     }
 
-    private void projectGeode(World world, IterableBlockBox geodeBoundingBox, Direction.Axis sliceAxis, Set<Direction.Axis> budAxes) {
-        geodeBoundingBox.slice(sliceAxis, slice -> {
-            // For each slice, determine the block composition
-            AtomicBoolean hasBlock = new AtomicBoolean(false);
-            AtomicBoolean hasCluster = new AtomicBoolean(false);
-            slice.iterate(blockPos -> {
-                BlockState blockState = world.getBlockState(blockPos);
-                Block block = blockState.getBlock();
-                if (block == Blocks.BUDDING_AMETHYST) {
-                    hasBlock.set(true);
-                }
-                if (block == Blocks.AMETHYST_CLUSTER) {
-                    // Clusters that go along the same axis as the slice are ignored
-                    // since they have to be swept by a different axis machine anyway.
-                    Direction clusterFacing = blockState.get(AmethystClusterBlock.FACING);
-                    if (budAxes.contains(clusterFacing.getAxis()))
-                        hasCluster.set(true);
-                }
-            });
-            // Choose sidewall block type depending on the block composition on the slice
-            Block wallBlock = Blocks.AIR;
-            if (hasBlock.get() && hasCluster.get())
-                wallBlock = Blocks.CRYING_OBSIDIAN;
-            else if (hasBlock.get())
-                wallBlock = Blocks.OBSIDIAN;
-            else if (hasCluster.get())
-                wallBlock = Blocks.SLIME_BLOCK;
-            // Set sidewall block
-            BlockPos wallPos = new BlockPos(slice.getMinX(), slice.getMinY(), slice.getMinZ()).offset(sliceAxis, -this.WALL_OFFSET);
-            world.setBlockState(wallPos, wallBlock.getDefaultState());
-        });
-    }
+    private IterableBlockBox detectGeode(World world, BlockPos pos1, BlockPos pos2) {
+        // Calculate the correct min/max coordinates and construct a box.
+        IterableBlockBox scanBox = new IterableBlockBox(new BlockBox(
+                Math.min(pos1.getX(), pos2.getX()),
+                Math.min(pos1.getY(), pos2.getY()),
+                Math.min(pos1.getZ(), pos2.getZ()),
+                Math.max(pos1.getX(), pos2.getX()),
+                Math.max(pos1.getY(), pos2.getY()),
+                Math.max(pos1.getZ(), pos2.getZ())
+        ));
 
-    private void runGeodesy(World world, BlockPos startPos, Direction.Axis axis1, Direction.Axis axis2) {
-        IterableBlockBox geodeBoundingBox = new IterableBlockBox(startPos);
-        IterableBlockBox geodeScanBoundingBox = new IterableBlockBox(geodeBoundingBox.expand(this.SCAN_RANGE));
-
-        // Scan the area to determine the extent of the geode.
-        geodeScanBoundingBox.iterate(blockPos -> {
+        // Scan the box, marking any positions with budding amethyst.
+        List<BlockPos> amethystPositions = new ArrayList<>();
+        scanBox.forEachPosition(blockPos -> {
             if (world.getBlockState(blockPos).getBlock() == Blocks.BUDDING_AMETHYST)
-                geodeBoundingBox.encompass(blockPos);
+                amethystPositions.add(blockPos);
         });
 
-        // Expand the area and clear it out for work purposes.
-        IterableBlockBox workBoundingBox = new IterableBlockBox(geodeBoundingBox.expand(BUILD_MARGIN));
-        workBoundingBox.iterate(blockPos -> {
-            if (world.getBlockState(blockPos).getBlock() != Blocks.BUDDING_AMETHYST)
-                world.setBlockState(blockPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
-        });
+        // Calculate the minimum bounding box that contains these positions.
+        return new IterableBlockBox(BlockBox.encompassPositions(amethystPositions).orElse(null).expand(1));
+    }
 
-        // Generate grown crystals in the working area.
-        geodeBoundingBox.iterate(blockPos -> {
+    private void growClusters(World world, IterableBlockBox geodeBoundingBox) {
+        geodeBoundingBox.forEachPosition(blockPos -> {
             if (world.getBlockState(blockPos).getBlock() == Blocks.BUDDING_AMETHYST) {
                 for (Direction direction: Direction.values()) {
                     BlockPos budPos = blockPos.offset(direction);
@@ -149,19 +120,94 @@ public class Geodesy implements ModInitializer {
                 }
             }
         });
+    }
 
-        // Projection bounding box has to be one block bigger.
-        IterableBlockBox projectionBoundingBox = new IterableBlockBox(geodeBoundingBox.expand(1));
+    private void projectGeode(World world, IterableBlockBox geodeBoundingBox, Direction.Axis sliceAxis) {
+        geodeBoundingBox.slice(sliceAxis, slice -> {
+            // For each slice, determine the block composition
+            AtomicBoolean hasBlock = new AtomicBoolean(false);
+            AtomicBoolean hasCluster = new AtomicBoolean(false);
+            slice.forEachPosition(blockPos -> {
+                BlockState blockState = world.getBlockState(blockPos);
+                Block block = blockState.getBlock();
+                if (block == Blocks.BUDDING_AMETHYST)
+                    hasBlock.set(true);
+                if (block == Blocks.AMETHYST_CLUSTER)
+                    hasCluster.set(true);
+            });
+            // Choose sidewall block type depending on the block composition on the slice
+            Block wallBlock;
+            if (hasBlock.get())
+                wallBlock = Blocks.CRYING_OBSIDIAN;
+            else if (hasCluster.get())
+                wallBlock = Blocks.MOSS_BLOCK;
+            else
+                wallBlock = Blocks.AIR;
+            // If this location has a flying machine, wipe out everything in that slice
+            // to simulate the flying machine doing its work.
+            if (wallBlock == Blocks.MOSS_BLOCK) {
+                slice.forEachPosition(blockPos -> {
+                    world.setBlockState(blockPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                });
+            }
+            // Set sidewall block
+            BlockPos wallPos = new BlockPos(slice.getMaxX(), slice.getMaxY(), slice.getMaxZ()).offset(sliceAxis, this.WALL_OFFSET);
+            world.setBlockState(wallPos, wallBlock.getDefaultState());
+        });
+    }
 
-        // Axis sets have been derived using pen and paper.
-        Set<Direction.Axis> primaryAxes = new HashSet<>();
-        primaryAxes.add(Direction.Axis.X);
-        primaryAxes.add(Direction.Axis.Y);
-        primaryAxes.add(Direction.Axis.Z);
-        primaryAxes.remove(axis1);
-        Set<Direction.Axis> secondaryAxes = new HashSet<>(List.of(axis1));
+    private void runGeodesy(World world, BlockPos startPos, BlockPos endPos, Direction.Axis[] axes) {
+        IterableBlockBox geodeBoundingBox = detectGeode(world, startPos, endPos);
+
+        // Expand the area and clear it out for work purposes.
+        IterableBlockBox workBoundingBox = new IterableBlockBox(geodeBoundingBox.expand(BUILD_MARGIN));
+        workBoundingBox.forEachPosition(blockPos -> {
+            if (world.getBlockState(blockPos).getBlock() != Blocks.BUDDING_AMETHYST)
+                world.setBlockState(blockPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+        });
+
+        // Generate grown crystals in the working area.
+        growClusters(world, geodeBoundingBox);
+
         // Run the projection.
-        this.projectGeode(world, projectionBoundingBox, axis1, primaryAxes);
-        this.projectGeode(world, projectionBoundingBox, axis2, secondaryAxes);
+        for (Direction.Axis axis: axes) {
+            this.projectGeode(world, geodeBoundingBox, axis);
+        }
+
+        // Postprocess the area.
+        IterableBlockBox frameBoundingBox = new IterableBlockBox(geodeBoundingBox.expand(WALL_OFFSET));
+        frameBoundingBox.forEachPosition(blockPos -> {
+            // Add a wireframe of obsidian around the farm.
+            int count = 0;
+            if (blockPos.getX() == frameBoundingBox.getMinX() || blockPos.getX() == frameBoundingBox.getMaxX())
+                count++;
+            if (blockPos.getY() == frameBoundingBox.getMinY() || blockPos.getY() == frameBoundingBox.getMaxY())
+                count++;
+            if (blockPos.getZ() == frameBoundingBox.getMinZ() || blockPos.getZ() == frameBoundingBox.getMaxZ())
+                count++;
+            if (count >= 2) {
+                world.setBlockState(blockPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+            } else {
+                // Opposite wall gets crying obsidian
+                if (blockPos.getX() == frameBoundingBox.getMinX() ||
+                    blockPos.getY() == frameBoundingBox.getMinY() ||
+                    blockPos.getZ() == frameBoundingBox.getMinZ()) {
+                    world.setBlockState(blockPos, Blocks.CRYING_OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+                }
+            }
+            // Replace all remaining amethyst clusters with buttons so items can't
+            // fall on them and get stuck.
+            BlockState blockState = world.getBlockState(blockPos);
+            if (blockState.getBlock() == Blocks.AMETHYST_CLUSTER) {
+                BlockState button = Blocks.POLISHED_BLACKSTONE_BUTTON.getDefaultState();
+                Direction facing = blockState.get(Properties.FACING);
+                button = switch (facing) {
+                    case DOWN -> button.with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.CEILING);
+                    case UP -> button.with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.FLOOR);
+                    default -> button.with(Properties.HORIZONTAL_FACING, facing);
+                };
+                world.setBlockState(blockPos, button, NOTIFY_LISTENERS);
+            }
+        });
     }
 }
