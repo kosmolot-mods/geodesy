@@ -177,6 +177,9 @@ public class Geodesy implements ModInitializer {
                 world.setBlockState(blockPos, button, NOTIFY_LISTENERS);
             }
         });
+
+        // Re-grow the buds so they are visible.
+        this.growClusters();
     }
 
     private void geodesyCollapse() {
