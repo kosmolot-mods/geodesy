@@ -15,7 +15,7 @@
   "icon": "assets/geodesy/icon.png",
   "entrypoints": {
     "main": [
-      "pl.kosma.geodesy.Geodesy"
+      "pl.kosma.geodesy.GeodesyFabricMod"
     ]
   },
   "mixins": [
