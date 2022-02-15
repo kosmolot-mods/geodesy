@@ -11,7 +11,7 @@ where you have op. Command blocks must also be enabled.
 
 **The mod *will* destroy the immediate surroundings of the geode!**
 
-1. Scout out a nice geode. For our tutorial. This small one will do.
+1. Scout out a nice geode. For our tutorial this small one will do.
 
    ![A small geode.](assets/geode1.png)
 
@@ -24,9 +24,9 @@ where you have op. Command blocks must also be enabled.
    is when you have two geodes very close to each other (this is also the reason we don't
    have autodetection - it easily got confused with multiple geodes nearby).
 
-   ![Geode area excavated, bounding box displayed.](assets/geode2.png)
+   Here I run `/geodesy area 255 -31 -1477 283 -53 -1453`:
 
-   `/geodesy area 255 -31 -1477 283 -53 -1453`
+   ![Geode area excavated, bounding box displayed.](assets/geode2.png)
 
 3. Run `/geodesy build <directions>` to project the geode onto three planes and create
    the farm structure:
@@ -35,10 +35,16 @@ where you have op. Command blocks must also be enabled.
    * Crying obsidian block means this location contains budding amethyst blocks, so
      the flying machine must not fly through that location.
    * Obsidian marks the outer frame of the machine.
+   * Buttons inside the farm mark spots that can't be harvested; you should have those
+     buttons in the farm to prevent items from landing on unharvested amethyst clusters.
+
+   You can experiment with the order of the directions, as different order will influence
+   the shapes and amounts of flying machines. Ideally you should have three directions,
+   one on each axis - but some geodes can be nearly completely harvested with just two.
+
+   Here I run `/geodesy project south east up`:
 
    ![Geode area excavated, bounding box displayed.](assets/geode2.png)
-
-   `/geodesy project south east up`
 
 3. Place the slime and honey blocks outside the structure, as shown by ilmango. All moss
    blocks should be covered; no crying obsidian blocks should be covered.
