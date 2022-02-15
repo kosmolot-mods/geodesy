@@ -44,22 +44,22 @@ where you have op. Command blocks must also be enabled.
 
    Here I run `/geodesy project south east up`:
 
-   ![Geode area excavated, bounding box displayed.](assets/geode2.png)
+   ![Geode area excavated, bounding box displayed.](assets/geode3.png)
 
 3. Place the slime and honey blocks outside the structure, as shown by ilmango. All moss
    blocks should be covered; no crying obsidian blocks should be covered.
 
-   ![Sticky block structures placed.](assets/geode3.png)
+   ![Sticky block structures placed.](assets/geode4.png)
 
 4. Using black and red stained glass, place markers to indicate where the flying machines
    should go. Again, use ilmango's video for details on the L-shape they require.
 
-   ![Flying machine markers placed.](assets/geode4.png)
+   ![Flying machine markers placed.](assets/geode5.png)
 
 5. Run `/geodesy assemble` to "push" the sticky block structures inside the obsidian frame
    and generate flying machines at locations that you marked.
 
-   ![Assembled farm structure.](assets/geode5.png)
+   ![Assembled farm structure.](assets/geode6.png)
 
 6. The rest is up to you! Add trigger wiring, collection system, and redstone clock. Again,
    watch ilmango's video for more information.
