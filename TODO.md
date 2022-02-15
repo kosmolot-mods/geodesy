@@ -1,7 +1,7 @@
 # TODO
 
 * Record instruction video
-* Upload to Curseforge
 * Better error checking
+* Checking of slime shape limits
 * Calculation of farm efficiency
 * Progress/status messages for the user
