@@ -30,8 +30,8 @@ public class GeodesyCore {
     // Build-time adjustments.
     static final int BUILD_MARGIN = 16;
     static final int WALL_OFFSET = 2;
-    static final Block MARKER_BLOCKER = Blocks.BLACK_STAINED_GLASS;
-    static final Block MARKER_MACHINE = Blocks.RED_STAINED_GLASS;
+    static final Block MARKER_BLOCKER = Blocks.WITHER_SKELETON_WALL_SKULL;
+    static final Block MARKER_MACHINE = Blocks.ZOMBIE_WALL_HEAD;
     static final Block WORK_AREA_WALL = Blocks.TINTED_GLASS;
     static final Set<Block> PRESERVE_BLOCKS = Sets.newHashSet(Blocks.BUDDING_AMETHYST, Blocks.COMMAND_BLOCK);
 
