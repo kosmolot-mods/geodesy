@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static net.minecraft.block.Block.NOTIFY_LISTENERS;
 
@@ -57,6 +58,14 @@ public class GeodesyCore {
         IterableBlockBox frameBoundingBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
         frameBoundingBox.forEachEdgePosition(blockPos -> world.setBlockState(blockPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS));
 
+        // Count the amethyst clusters (for efficiency calculation).
+        AtomicInteger clustersTotal = new AtomicInteger();
+        geode.forEachPosition(blockPos -> {
+            if (world.getBlockState(blockPos).getBlock() == Blocks.AMETHYST_CLUSTER) {
+                clustersTotal.getAndIncrement();
+            }
+        });
+
         // Run the projection.
         for (Direction direction: directions) {
             this.projectGeode(direction);
@@ -64,9 +73,11 @@ public class GeodesyCore {
 
         // Replace all remaining amethyst clusters with buttons so items can't
         // fall on them and get stuck.
+        AtomicInteger clustersLeft = new AtomicInteger();
         geode.forEachPosition(blockPos -> {
             BlockState blockState = world.getBlockState(blockPos);
             if (blockState.getBlock() == Blocks.AMETHYST_CLUSTER) {
+                clustersLeft.getAndIncrement();
                 BlockState button = Blocks.POLISHED_BLACKSTONE_BUTTON.getDefaultState();
                 Direction facing = blockState.get(Properties.FACING);
                 button = switch (facing) {
@@ -77,9 +88,14 @@ public class GeodesyCore {
                 world.setBlockState(blockPos, button, NOTIFY_LISTENERS);
             }
         });
+        int clustersCollected = clustersTotal.get() - clustersLeft.get();
 
         // Re-grow the buds so they are visible.
         this.growClusters();
+
+        // Calculate and show layout efficiency.
+        float efficiency = 100f * (clustersTotal.get()-clustersLeft.get()) / clustersTotal.get();
+        LOGGER.info("Layout efficiency: {}% ({}/{} clusters collected)", (int) efficiency, clustersCollected, clustersTotal.get());
     }
 
     void geodesyAssemble() {
