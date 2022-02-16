@@ -28,7 +28,7 @@ where you have op. Command blocks must also be enabled.
 
    ![Geode area excavated, bounding box displayed.](assets/geode2.png)
 
-3. Run `/geodesy build <directions>` to project the geode onto three planes and create
+3. Run `/geodesy project <directions>` to project the geode onto three planes and create
    the farm structure:
 
    * Moss block means this location contains amethyst clusters to be pushed and destroyed.
