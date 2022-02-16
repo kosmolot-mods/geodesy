@@ -44,6 +44,16 @@ public class GeodesyFabricMod implements ModInitializer {
                                         throw (e);
                                     }
                                 }))))
+                    .then(literal("analyze").executes(context -> {
+                        try {
+                            core.geodesyAnalyze();
+                            return Command.SINGLE_SUCCESS;
+                        }
+                        catch (Exception e) {
+                            LOGGER.error("analyze", e);
+                            throw (e);
+                        }
+                    }))
                     .then(literal("project")
                         .then(argument("directions", StringArgumentType.greedyString())
                             .executes(context -> {

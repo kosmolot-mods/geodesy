@@ -18,10 +18,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static net.minecraft.block.Block.NOTIFY_LISTENERS;
 
@@ -57,6 +59,11 @@ public class GeodesyCore {
         // Render a frame.
         IterableBlockBox frameBoundingBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
         frameBoundingBox.forEachEdgePosition(blockPos -> world.setBlockState(blockPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS));
+
+        // Do nothing more if we have no direction - this signifies we just want
+        // to draw the frame and do nothing else.
+        if (directions.length == 0)
+            return;
 
         // Count the amethyst clusters (for efficiency calculation).
         AtomicInteger clustersTotal = new AtomicInteger();
@@ -95,7 +102,28 @@ public class GeodesyCore {
 
         // Calculate and show layout efficiency.
         float efficiency = 100f * (clustersTotal.get()-clustersLeft.get()) / clustersTotal.get();
-        LOGGER.info("Layout efficiency: {}% ({}/{} clusters collected)", (int) efficiency, clustersCollected, clustersTotal.get());
+        String layoutName = String.join(" ", Arrays.stream(directions).map(Direction::toString).collect(Collectors.joining(", ")));
+        LOGGER.info("Layout efficiency for \"{}\": {}% ({}/{})", layoutName, (int) efficiency, clustersCollected, clustersTotal.get());
+    }
+
+    public void geodesyAnalyze() {
+        // Run all possible projections and show the efficiencies.
+        LOGGER.info("Running all possible projections to determine efficiencies...");
+        geodesyProject(new Direction[]{Direction.EAST});
+        geodesyProject(new Direction[]{Direction.SOUTH});
+        geodesyProject(new Direction[]{Direction.UP});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH});
+        geodesyProject(new Direction[]{Direction.SOUTH, Direction.UP});
+        geodesyProject(new Direction[]{Direction.UP, Direction.EAST});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH, Direction.UP});
+        // Clean up the results of the last projection.
+        geodesyProject(new Direction[]{});
+        // Advise the user.
+        LOGGER.info("...projection complete. Use your judgement to choose the best set of projections.");
+        LOGGER.info("Tips:");
+        LOGGER.info("1. You can change the order of projections to make the flying machine layouts simpler.");
+        LOGGER.info("2. You can change EAST to WEST, SOUTH to NORTH, UP to DOWN depending on your liking.");
+        LOGGER.info("Those changes will not affect the farm's efficiency.");
     }
 
     void geodesyAssemble() {
