@@ -1,15 +1,21 @@
 package pl.kosma.geodesy;
 
 import com.google.common.collect.Sets;
-import net.minecraft.block.AmethystClusterBlock;
-import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
+import net.minecraft.block.*;
 import net.minecraft.block.entity.CommandBlockBlockEntity;
 import net.minecraft.block.entity.StructureBlockBlockEntity;
 import net.minecraft.block.enums.StructureBlockMode;
 import net.minecraft.block.enums.WallMountLocation;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtString;
+import net.minecraft.network.MessageType;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.state.property.Properties;
+import net.minecraft.text.LiteralText;
+import net.minecraft.text.Text;
+import net.minecraft.util.Util;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
@@ -17,6 +23,7 @@ import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -42,7 +49,30 @@ public class GeodesyCore {
     private World world;
     private IterableBlockBox geode;
 
+    public void geodesyGeodesy() {
+        sendCommandFeedback("Welcome to Geodesy!");
+        sendCommandFeedback("Read the book for all the gory details.");
+        fillHotbar();
+    }
+
+    private void fillHotbar() {
+        ServerPlayerEntity player = this.player.get();
+        if (player == null)
+            return;
+        player.getInventory().setStack(0, UnholyBookOfGeodesy.summonKrivbeknih());
+        player.getInventory().setStack(1, Items.SLIME_BLOCK.getDefaultStack());
+        player.getInventory().setStack(2, Items.HONEY_BLOCK.getDefaultStack());
+        player.getInventory().setStack(3, Items.WITHER_SKELETON_SKULL.getDefaultStack());
+        player.getInventory().setStack(4, Items.ZOMBIE_HEAD.getDefaultStack());
+        player.getInventory().setStack(5, Items.AIR.getDefaultStack());
+        player.getInventory().setStack(6, Items.AIR.getDefaultStack());
+        player.getInventory().setStack(7, Items.AIR.getDefaultStack());
+        player.getInventory().setStack(8, Items.AIR.getDefaultStack());
+    }
+
     void geodesyArea(World world, BlockPos startPos, BlockPos endPos) {
+        sendCommandFeedback("---");
+
         this.world = world;
 
         // Detect the geode area.
@@ -60,9 +90,9 @@ public class GeodesyCore {
         IterableBlockBox frameBoundingBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
         frameBoundingBox.forEachEdgePosition(blockPos -> world.setBlockState(blockPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS));
 
-        // Do nothing more if we have no direction - this signifies we just want
+        // Do nothing more if we have no directions - this signifies we just want
         // to draw the frame and do nothing else.
-        if (directions.length == 0)
+        if (directions == null)
             return;
 
         // Count the amethyst clusters (for efficiency calculation).
@@ -102,13 +132,15 @@ public class GeodesyCore {
 
         // Calculate and show layout efficiency.
         float efficiency = 100f * (clustersTotal.get()-clustersLeft.get()) / clustersTotal.get();
-        String layoutName = String.join(" ", Arrays.stream(directions).map(Direction::toString).collect(Collectors.joining(", ")));
-        LOGGER.info("Layout efficiency for \"{}\": {}% ({}/{})", layoutName, (int) efficiency, clustersCollected, clustersTotal.get());
+        String layoutName = String.join(" ", Arrays.stream(directions).map(Direction::toString).collect(Collectors.joining(" ")));
+        sendCommandFeedback(" %s: %d%% (%d/%d)", layoutName, (int) efficiency, clustersCollected, clustersTotal.get());
     }
 
     public void geodesyAnalyze() {
+        sendCommandFeedback("---");
+
         // Run all possible projections and show the efficiencies.
-        LOGGER.info("Running all possible projections to determine efficiencies...");
+        sendCommandFeedback("Projection efficiency:");
         geodesyProject(new Direction[]{Direction.EAST});
         geodesyProject(new Direction[]{Direction.SOUTH});
         geodesyProject(new Direction[]{Direction.UP});
@@ -117,13 +149,9 @@ public class GeodesyCore {
         geodesyProject(new Direction[]{Direction.UP, Direction.EAST});
         geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH, Direction.UP});
         // Clean up the results of the last projection.
-        geodesyProject(new Direction[]{});
+        geodesyProject(null);
         // Advise the user.
-        LOGGER.info("...projection complete. Use your judgement to choose the best set of projections.");
-        LOGGER.info("Tips:");
-        LOGGER.info("1. You can change the order of projections to make the flying machine layouts simpler.");
-        LOGGER.info("2. You can change EAST to WEST, SOUTH to NORTH, UP to DOWN depending on your liking.");
-        LOGGER.info("Those changes will not affect the farm's efficiency.");
+        sendCommandFeedback("Now run /geodesy project with your chosen projections.");
     }
 
     void geodesyAssemble() {
@@ -215,10 +243,16 @@ public class GeodesyCore {
         });
 
         // Add a command block to allow the player to reeexecute the command easily.
+        String resumeCommand = String.format("/geodesy area %d %d %d %d %d %d",
+                geode.getMinX(), geode.getMinY(), geode.getMinZ(), geode.getMaxX(), geode.getMaxY(), geode.getMaxZ());
+
         world.setBlockState(commandBlockPos, Blocks.COMMAND_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
         CommandBlockBlockEntity commandBlock = (CommandBlockBlockEntity) world.getBlockEntity(commandBlockPos);
-        commandBlock.getCommandExecutor().setCommand(String.format("/geodesy area %d %d %d %d %d %d",
-                geode.getMinX(), geode.getMinY(), geode.getMinZ(), geode.getMaxX(), geode.getMaxY(), geode.getMaxZ()));
+        if (commandBlock == null) {
+            LOGGER.error("Command blocks are disabled on the server - unable to save the resume command.");
+            return;
+        }
+        commandBlock.getCommandExecutor().setCommand(resumeCommand);
         commandBlock.markDirty();
     }
 
@@ -242,16 +276,27 @@ public class GeodesyCore {
 
         // Calculate the minimum bounding box that contains these positions.
         // The expand is to make sure we grab all the amethyst clusters as well.
-        geode = new IterableBlockBox(BlockBox.encompassPositions(amethystPositions).orElse(null).expand(1));
+        BlockBox geodeBox = BlockBox.encompassPositions(amethystPositions).orElse(null);
+        if (geodeBox == null) {
+            sendCommandFeedback("I can't find any budding amethyst in the area you gave me. :(");
+            return;
+        } else {
+            sendCommandFeedback("Geode found. Now verify it's detected correctly and run /geodesy analyze.");
+        }
+        geode = new IterableBlockBox(geodeBox.expand(1));
     }
 
     private void highlightGeode() {
         // Highlight the geode area.
         int commandBlockOffset = WALL_OFFSET+1;
         BlockPos structureBlockPos = new BlockPos(geode.getMinX()-commandBlockOffset, geode.getMinY()-commandBlockOffset, geode.getMinZ()-commandBlockOffset);
-        world.setBlockState(structureBlockPos, Blocks.STRUCTURE_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
+        BlockState structureBlockState = Blocks.STRUCTURE_BLOCK.getDefaultState().with(StructureBlock.MODE, StructureBlockMode.SAVE);
+        world.setBlockState(structureBlockPos, structureBlockState, NOTIFY_LISTENERS);
         StructureBlockBlockEntity structure = (StructureBlockBlockEntity) world.getBlockEntity(structureBlockPos);
-        structure.setMode(StructureBlockMode.SAVE);
+        if (structure == null) {
+            LOGGER.error("StructureBlock tile entity is missing... this should never happen????");
+            return;
+        }
         structure.setStructureName("geode");
         structure.setOffset(new BlockPos(commandBlockOffset, commandBlockOffset, commandBlockOffset));
         structure.setSize(geode.getDimensions().add(1, 1, 1));
@@ -358,5 +403,30 @@ public class GeodesyCore {
         pos = pos.offset(directionAlong, 2);
         // [SKIP AGAIN!] Eighth layer: blocker
         world.setBlockState(pos.offset(directionUp, 0), Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+    }
+
+    /*
+     * A little kludge to avoid having to pass the "player" around all the time;
+     * instead we rely on the caller setting it before calling methods on us.
+     * We use a weak reference, so we don't keep the player around (we don't own it).
+     */
+
+    private WeakReference<ServerPlayerEntity> player;
+
+    public void setPlayerEntity(ServerPlayerEntity player) {
+        this.player = new WeakReference<>(player);
+    }
+
+    private void sendCommandFeedback(Text message) {
+        ServerPlayerEntity serverPlayerEntity = player.get();
+        if (serverPlayerEntity == null) {
+            LOGGER.error("Player went away????");
+            return;
+        }
+        serverPlayerEntity.sendMessage(message, MessageType.CHAT, Util.NIL_UUID);
+    }
+
+    private void sendCommandFeedback(String format, Object... args) {
+        sendCommandFeedback(new LiteralText(String.format(format, args)));
     }
 }
