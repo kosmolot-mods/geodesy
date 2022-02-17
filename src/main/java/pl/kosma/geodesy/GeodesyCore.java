@@ -43,6 +43,7 @@ public class GeodesyCore {
     static final Block MARKER_MACHINE = Blocks.ZOMBIE_WALL_HEAD;
     static final Block WORK_AREA_WALL = Blocks.TINTED_GLASS;
     static final Set<Block> PRESERVE_BLOCKS = Sets.newHashSet(Blocks.BUDDING_AMETHYST, Blocks.COMMAND_BLOCK);
+    static final Set<Block> STICKY_BLOCKS = Sets.newHashSet(Blocks.SLIME_BLOCK, Blocks.HONEY_BLOCK);
 
     static final Logger LOGGER = LoggerFactory.getLogger("GeodesyCore");
 
@@ -164,7 +165,7 @@ public class GeodesyCore {
                 Block sourceBlock = world.getBlockState(sourcePos).getBlock();
                 Block targetBlock = world.getBlockState(targetPos).getBlock();
                 // Check that the operation can succeed.
-                if (sourceBlock != Blocks.AIR && targetBlock != Blocks.CRYING_OBSIDIAN) {
+                if (STICKY_BLOCKS.contains(sourceBlock)) {
                     world.setBlockState(targetPos, world.getBlockState(sourcePos), NOTIFY_LISTENERS);
                     world.setBlockState(sourcePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
                 }
