@@ -34,14 +34,14 @@ public class UnholyBookOfGeodesy {
                 
                 Paradoxically, a big geode is more difficult to farm than a small one.
                 
-                Curb your greed and you will be rewarded. 
+                Curb your greed and you will be rewarded.
                 """));
         pages.add(pages.size(), NBTJsonString(
                 """
                 Step 2:
-                /geodesy area <xyz> <xyz> 
+                /geodesy area <xyz> <xyz>
 
-                Mark the corners of the area that contains a geode. You don't have to be exact.               
+                Mark the corners of the area that contains a geode. You don't have to be exact.
                 
                 Spectator Mode and Tab completion are your friends.
                 """));
@@ -62,7 +62,7 @@ public class UnholyBookOfGeodesy {
                 For your convenience, you can adjust those without changing the efficiency of the farm:
                 
                 - Swap north/soth
-                - Swap east/west 
+                - Swap east/west
                 - Swap up/down
                 - Change order of directions
                 """));

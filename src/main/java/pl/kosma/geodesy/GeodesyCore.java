@@ -6,10 +6,7 @@ import net.minecraft.block.entity.CommandBlockBlockEntity;
 import net.minecraft.block.entity.StructureBlockBlockEntity;
 import net.minecraft.block.enums.StructureBlockMode;
 import net.minecraft.block.enums.WallMountLocation;
-import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtList;
-import net.minecraft.nbt.NbtString;
 import net.minecraft.network.MessageType;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.state.property.Properties;
@@ -39,9 +36,9 @@ public class GeodesyCore {
     // Build-time adjustments.
     static final int BUILD_MARGIN = 16;
     static final int WALL_OFFSET = 2;
-    static final Block MARKER_BLOCKER = Blocks.WITHER_SKELETON_WALL_SKULL;
-    static final Block MARKER_MACHINE = Blocks.ZOMBIE_WALL_HEAD;
     static final Block WORK_AREA_WALL = Blocks.TINTED_GLASS;
+    static final Set<Block> MARKERS_BLOCKER = Sets.newHashSet(Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, Blocks.BLACK_STAINED_GLASS);
+    static final Set<Block> MARKERS_MACHINE = Sets.newHashSet(Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, Blocks.RED_STAINED_GLASS);
     static final Set<Block> PRESERVE_BLOCKS = Sets.newHashSet(Blocks.BUDDING_AMETHYST, Blocks.COMMAND_BLOCK);
     static final Set<Block> STICKY_BLOCKS = Sets.newHashSet(Blocks.SLIME_BLOCK, Blocks.HONEY_BLOCK);
 
@@ -163,7 +160,6 @@ public class GeodesyCore {
                 BlockPos targetPos = slice.getEndpoint(direction).offset(direction, WALL_OFFSET);
                 BlockPos sourcePos = targetPos.offset(direction, 1);
                 Block sourceBlock = world.getBlockState(sourcePos).getBlock();
-                Block targetBlock = world.getBlockState(targetPos).getBlock();
                 // Check that the operation can succeed.
                 if (STICKY_BLOCKS.contains(sourceBlock)) {
                     world.setBlockState(targetPos, world.getBlockState(sourcePos), NOTIFY_LISTENERS);
@@ -177,12 +173,12 @@ public class GeodesyCore {
             geode.slice(slicingDirection.getAxis(), slice -> {
                 // Check for blocker marker block.
                 BlockPos blockerPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET+2);
-                if (world.getBlockState(blockerPos).getBlock() != MARKER_BLOCKER)
+                if (!MARKERS_BLOCKER.contains(world.getBlockState(blockerPos).getBlock()))
                     return;
                 // Find the position of the first machine block.
                 BlockPos firstMachinePos = null;
                 for (Direction direction: Direction.values()) {
-                    if (world.getBlockState(blockerPos.offset(direction)).getBlock() == MARKER_MACHINE) {
+                    if (MARKERS_MACHINE.contains(world.getBlockState(blockerPos.offset(direction)).getBlock())) {
                         firstMachinePos = blockerPos.offset(direction);
                         break;
                     }
@@ -192,8 +188,8 @@ public class GeodesyCore {
                 // First the direction of the second (and third) machine block.
                 Direction machineDirection = null;
                 for (Direction direction: Direction.values()) {
-                    if (world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock() == MARKER_MACHINE &&
-                            world.getBlockState(firstMachinePos.offset(direction, 2)).getBlock() == MARKER_MACHINE) {
+                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock()) &&
+                            MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 2)).getBlock())) {
                         machineDirection = direction;
                         break;
                     }
