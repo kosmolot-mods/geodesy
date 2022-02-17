@@ -30,7 +30,8 @@ public class UnholyBookOfGeodesy {
                 """));
         pages.add(pages.size(), NBTJsonString(
                 """
-                Step 1: Scout out a nice, healthy geode.
+                Step 1:
+                Scout out a nice, healthy geode.
                 
                 Paradoxically, a big geode is more difficult to farm than a small one.
                 
@@ -95,7 +96,7 @@ public class UnholyBookOfGeodesy {
                 """
                 Step 8:
                 
-                Now the boring part: for trigger wiring, redstone clock, collection system, etc. follow ilmango's video.
+                Now the boring part: for trigger wiring, collection system, etc. Follow ilmango's video.
                 
                 I won't hold your hand.
                 

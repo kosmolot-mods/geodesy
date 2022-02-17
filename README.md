@@ -13,10 +13,13 @@ where you have op. Command blocks must also be enabled.
 
 ### Step 1: Geode
 
+Run `/geodesy` without any arguments to acquire The Unholy Book of Geodesy,
+as well as the set of blocks you will need to build the farm.
+
 Scout out a nice geode. For our tutorial this small one will do.
 
 Note: this method of amethyst farming tends to struggle with very large geodes,
-because of how many collisions they tend to cause. Small to medium sized ones
+because of how many collisions they usually cause. Small to medium sized ones
 work best.
 
 ![A small geode.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode1.png)
@@ -32,7 +35,7 @@ volume and the mod will find the geode anyway. The only time you have to be care
 is when you have two geodes very close to each other (this is also the reason we don't
 have autodetection - it easily got confused with multiple geodes nearby).
 
-Here I run `/geodesy area 255 -31 -1477 283 -53 -1453`:
+Here I run `/geodesy area 259 -37 -1459 277 -50 -1477`:
 
 ![Geode area excavated, bounding box displayed.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode2.png)
 
@@ -70,7 +73,11 @@ efficiency of the farm:
 * You can change the order of the directions to influence the shapes of the moss formations.
   Some formations are easier to cover with sticky blocks than other. Experiment to find out.
 
-Here I run `/geodesy project south east up`:
+In this particular geode's case, I decided to only use two directions as that gets me to 96% efficiency.
+Adding the third direction only improves the efficiency by further 2%. I also choose the order of
+"south up" as it generates simpler moss patterns.
+
+Here I run `/geodesy project south up`:
 
 ![Projection done.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode4.png)
 
@@ -93,14 +100,14 @@ a flying machine.
 ### Step 7: Assemble
 
 Run `/geodesy assemble` to "push" the sticky block structures inside the obsidian frame
-and generate flying machines at locations that you marked.
+and generate flying machines at locations that you marked. The redstone clock is also 
+generated for your convenience - just connect it.
 
 ![Assembled farm structure.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode7.png)
 
 ### Step 8: Wiring
 
-The rest is up to you! Add trigger wiring, collection system, and redstone clock. Again,
-watch ilmango's video for more information.
+The rest is up to you! Add trigger wiring and collection system. Again, watch ilmango's video for more information.
 
 ![Finished farm.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode8.png)
 

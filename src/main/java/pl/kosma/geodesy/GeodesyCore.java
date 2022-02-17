@@ -3,9 +3,13 @@ package pl.kosma.geodesy;
 import com.google.common.collect.Sets;
 import net.minecraft.block.*;
 import net.minecraft.block.entity.CommandBlockBlockEntity;
+import net.minecraft.block.entity.DropperBlockEntity;
+import net.minecraft.block.entity.HopperBlockEntity;
 import net.minecraft.block.entity.StructureBlockBlockEntity;
 import net.minecraft.block.enums.StructureBlockMode;
 import net.minecraft.block.enums.WallMountLocation;
+import net.minecraft.block.enums.WireConnection;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.network.MessageType;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -36,7 +40,9 @@ public class GeodesyCore {
     // Build-time adjustments.
     static final int BUILD_MARGIN = 16;
     static final int WALL_OFFSET = 2;
+    static final int CLOCK_Y_OFFSET = 13;
     static final Block WORK_AREA_WALL = Blocks.TINTED_GLASS;
+    static final Block FULL_BLOCK = Blocks.IRON_BLOCK;
     static final Set<Block> MARKERS_BLOCKER = Sets.newHashSet(Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, Blocks.BLACK_STAINED_GLASS);
     static final Set<Block> MARKERS_MACHINE = Sets.newHashSet(Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, Blocks.RED_STAINED_GLASS);
     static final Set<Block> PRESERVE_BLOCKS = Sets.newHashSet(Blocks.BUDDING_AMETHYST, Blocks.COMMAND_BLOCK);
@@ -215,6 +221,10 @@ public class GeodesyCore {
                 buildMachine(blockerPos, firstMachinePos, slicingDirection, machineDirection, stickyBlock);
             });
         }
+
+        // Plop the clock at the top ¯\_(ツ)_/¯
+        BlockPos clockPos = new BlockPos((geode.getMinX()+geode.getMaxX())/2+3, geode.getMaxY()+CLOCK_Y_OFFSET, (geode.getMinZ()+geode.getMaxZ())/2+1);
+        buildClock(clockPos, Direction.WEST, Direction.NORTH);
     }
 
     private void prepareWorkArea(boolean force) {
@@ -400,6 +410,80 @@ public class GeodesyCore {
         pos = pos.offset(directionAlong, 2);
         // [SKIP AGAIN!] Eighth layer: blocker
         world.setBlockState(pos.offset(directionUp, 0), Blocks.CRYING_OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+    }
+
+    private void buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
+        // Platform
+        for (int i=0; i<6; i++)
+            for (int j=0; j<3; j++)
+                world.setBlockState(startPos.offset(directionMain, i).offset(directionSide, j), FULL_BLOCK.getDefaultState());
+
+        // Four solid blocks
+        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 1).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
+        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 2).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
+        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 1).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
+        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 2).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
+
+        // Torch and lever
+        world.setBlockState(startPos.offset(directionMain, -1), Blocks.REDSTONE_WALL_TORCH.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()));
+        world.setBlockState(startPos.offset(directionMain, -1).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.LEVER.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()).with(Properties.POWERED, true));
+
+        // Four redstone dusts
+        BlockState redstoneDustPlus = Blocks.REDSTONE_WIRE.getDefaultState()
+                .with(Properties.EAST_WIRE_CONNECTION, WireConnection.SIDE)
+                .with(Properties.WEST_WIRE_CONNECTION, WireConnection.SIDE)
+                .with(Properties.NORTH_WIRE_CONNECTION, WireConnection.SIDE)
+                .with(Properties.SOUTH_WIRE_CONNECTION, WireConnection.SIDE);
+        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 0).offset(Direction.UP, 1), redstoneDustPlus);
+        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 2).offset(Direction.UP, 2), redstoneDustPlus);
+        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 0).offset(Direction.UP, 1), redstoneDustPlus);
+        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 2).offset(Direction.UP, 2), redstoneDustPlus);
+
+        // Two redstone blocks
+        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 0).offset(Direction.UP, 1), Blocks.REDSTONE_BLOCK.getDefaultState());
+        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.REDSTONE_BLOCK.getDefaultState());
+
+        // Dropper (41 sticks)
+        world.setBlockState(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.DROPPER.getDefaultState().with(Properties.FACING, directionMain));
+        DropperBlockEntity dropper = (DropperBlockEntity) world.getBlockEntity(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 1));
+        if (dropper == null) return;
+        ItemStack sticks41 = Items.STICK.getDefaultStack(); sticks41.setCount(41);
+        dropper.setStack(0, sticks41);
+        dropper.markDirty();
+
+        // Hopper (4 stacks + 49 sticks)
+        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite()));
+        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite())); // invisible block bug????
+        HopperBlockEntity hopper = (HopperBlockEntity) world.getBlockEntity(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1));
+        if (hopper == null) return;
+        ItemStack sticks64 = Items.STICK.getDefaultStack(); sticks64.setCount(64);
+        ItemStack sticks49 = Items.STICK.getDefaultStack(); sticks49.setCount(49);
+        hopper.setStack(0, sticks64.copy());
+        hopper.setStack(1, sticks64.copy());
+        hopper.setStack(2, sticks64.copy());
+        hopper.setStack(3, sticks64.copy());
+        hopper.setStack(4, sticks49);
+        hopper.markDirty();
+
+        // The other two hoppers (empty)
+        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite()));
+        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite())); // invisible block bug????
+        world.setBlockState(startPos.offset(directionMain, 2).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain));
+
+        // Four comparators
+        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain));
+        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain));
+        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()));
+        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()));
+
+        // Note block
+        world.setBlockState(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 2), Blocks.NOTE_BLOCK.getDefaultState());
+
+        // Four sticky pistons
+        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 0).offset(Direction.UP, 1), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain));
+        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 0).offset(Direction.UP, 1), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain.getOpposite()));
+        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain));
+        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain.getOpposite()));
     }
 
     /*
