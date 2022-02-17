@@ -68,7 +68,7 @@ public class GeodesyCore {
         player.getInventory().setStack(5, Items.AIR.getDefaultStack());
         player.getInventory().setStack(6, Items.AIR.getDefaultStack());
         player.getInventory().setStack(7, Items.AIR.getDefaultStack());
-        player.getInventory().setStack(8, Items.AIR.getDefaultStack());
+        player.getInventory().setStack(8, Items.POISONOUS_POTATO.getDefaultStack());
     }
 
     void geodesyArea(World world, BlockPos startPos, BlockPos endPos) {

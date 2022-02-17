@@ -70,21 +70,48 @@ public class UnholyBookOfGeodesy {
                 """
                 Step 5:
                 
-                Place the sticky block structures and flying machine markers, as shown on screenshots.
+                Place sticky block structures on the sides of the farm. All moss blocks and no crying obsidian blocks should be covered.
                 
-                Can't describe this in a book very well. Sorry. 
+                It's a bit like sudoku.
                 """));
         pages.add(pages.size(), NBTJsonString(
                 """
                 Step 6:
-                /geodesy assemble
                 
-                The Beast is Ready.
+                Place mob heads as markers indicating where the flying machines should go. See the Curseforge mod page for details.
                 
-                Minor details such as trigger writing, redstone clock and collection system are for you to figure out.  
+                Just don't summon a wither!
                 """));
         pages.add(pages.size(), NBTJsonString(
                 """
+                Step 7:
+                /geodesy assemble
+                
+                Once you are satisfied with the layout, assemble the farm and see the flying machines in their full glory.
+                
+                The Beast is Ready.
+                """));
+        pages.add(pages.size(), NBTJsonString(
+                """
+                Step 8:
+                
+                Now the boring part: for trigger wiring, redstone clock, collection system, etc. follow ilmango's video.
+                
+                I won't hold your hand.
+                
+                
+                
+                ...unless?
+                """));
+        pages.add(pages.size(), NBTJsonString(
+                """
+                Step 9:
+                
+                There is no step 9.
+                
+                
+                
+                
                 Feeling lost?
                 
                 Check out the mod page on Curseforge for screenshots and more detailed instructions.
