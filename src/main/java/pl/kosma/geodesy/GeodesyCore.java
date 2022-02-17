@@ -403,7 +403,7 @@ public class GeodesyCore {
         world.setBlockState(pos.offset(directionUp, 1), Blocks.OBSERVER.getDefaultState().with(Properties.FACING, directionAlong), NOTIFY_LISTENERS);
         pos = pos.offset(directionAlong, 2);
         // [SKIP AGAIN!] Eighth layer: blocker
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+        world.setBlockState(pos.offset(directionUp, 0), Blocks.CRYING_OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
     }
 
     /*
