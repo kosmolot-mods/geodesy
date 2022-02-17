@@ -22,9 +22,6 @@
       "pl.kosma.geodesy.GeodesyFabricMod"
     ]
   },
-  "mixins": [
-    "geodesy.mixins.json"
-  ],
   "depends": {
     "fabricloader": ">=0.12.12",
     "fabric": "*",
