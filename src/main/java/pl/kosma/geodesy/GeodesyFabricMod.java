@@ -47,7 +47,7 @@ public class GeodesyFabricMod implements ModInitializer {
                                 .executes(context -> {
                                     try {
                                         GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                        World world = context.getSource().getPlayer().getServerWorld();
+                                        World world = context.getSource().getPlayer().getWorld();
                                         BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
                                         BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "end");
                                         core.geodesyArea(world, startPos, endPos);
