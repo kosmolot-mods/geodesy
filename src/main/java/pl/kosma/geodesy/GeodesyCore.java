@@ -11,10 +11,9 @@ import net.minecraft.block.enums.WallMountLocation;
 import net.minecraft.block.enums.WireConnection;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.network.MessageType;
+import net.minecraft.network.message.MessageType;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.state.property.Properties;
-import net.minecraft.text.LiteralText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import net.minecraft.util.math.BlockBox;
@@ -304,7 +303,7 @@ public class GeodesyCore {
             LOGGER.error("StructureBlock tile entity is missing... this should never happen????");
             return;
         }
-        structure.setStructureName("geode");
+        structure.setTemplateName("geodesy:geode");
         structure.setOffset(new BlockPos(commandBlockOffset, commandBlockOffset, commandBlockOffset));
         structure.setSize(geode.getDimensions().add(1, 1, 1));
         structure.setShowBoundingBox(true);
@@ -504,10 +503,10 @@ public class GeodesyCore {
             LOGGER.error("Player went away????");
             return;
         }
-        serverPlayerEntity.sendMessage(message, MessageType.CHAT, Util.NIL_UUID);
+        serverPlayerEntity.sendMessage(message, MessageType.SYSTEM);
     }
 
     private void sendCommandFeedback(String format, Object... args) {
-        sendCommandFeedback(new LiteralText(String.format(format, args)));
+        sendCommandFeedback(Text.of(String.format(format, args)));
     }
 }
