@@ -11,7 +11,6 @@ import net.minecraft.block.enums.WallMountLocation;
 import net.minecraft.block.enums.WireConnection;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.network.message.MessageType;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
@@ -362,8 +361,8 @@ public class GeodesyCore {
         /*
          * It looks like this:
          * S HHH
-         * S HVHH[<N
-         * SB[L>]SSSB
+         * S HVHH[<NB
+         * SB[L>]SSS
          */
         // Blocker block.
         world.setBlockState(blockerPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
