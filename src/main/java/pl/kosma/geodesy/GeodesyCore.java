@@ -502,7 +502,7 @@ public class GeodesyCore {
             LOGGER.error("Player went away????");
             return;
         }
-        serverPlayerEntity.sendMessage(message, MessageType.SYSTEM);
+        serverPlayerEntity.sendMessage(message);
     }
 
     private void sendCommandFeedback(String format, Object... args) {
