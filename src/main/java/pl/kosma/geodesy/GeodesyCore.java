@@ -6,6 +6,7 @@ import net.minecraft.block.entity.CommandBlockBlockEntity;
 import net.minecraft.block.entity.DropperBlockEntity;
 import net.minecraft.block.entity.HopperBlockEntity;
 import net.minecraft.block.entity.StructureBlockBlockEntity;
+import net.minecraft.block.enums.BlockHalf;
 import net.minecraft.block.enums.StructureBlockMode;
 import net.minecraft.block.enums.WallMountLocation;
 import net.minecraft.block.enums.WireConnection;
@@ -22,10 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -174,6 +172,7 @@ public class GeodesyCore {
 
         // Check each slice for a marker block.
         for (Direction slicingDirection: Direction.values()) {
+            List<BlockPos> triggerObserverPositions = new ArrayList<>();
             geode.slice(slicingDirection.getAxis(), slice -> {
                 // Check for blocker marker block.
                 BlockPos blockerPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET + 2);
@@ -182,7 +181,7 @@ public class GeodesyCore {
                     return;
                 // Find the position of the first machine block.
                 BlockPos firstMachinePos = null;
-                for (Direction direction: Direction.values()) {
+                for (Direction direction : Direction.values()) {
                     if (MARKERS_MACHINE.contains(world.getBlockState(blockerPos.offset(direction)).getBlock())) {
                         firstMachinePos = blockerPos.offset(direction);
                         break;
@@ -192,7 +191,7 @@ public class GeodesyCore {
                     return;
                 // First the direction of the second (and third) machine block.
                 Direction machineDirection = null;
-                for (Direction direction: Direction.values()) {
+                for (Direction direction : Direction.values()) {
                     if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock()) &&
                             MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 2)).getBlock())) {
                         machineDirection = direction;
@@ -217,8 +216,22 @@ public class GeodesyCore {
                 blockerPos = blockerPos.offset(slicingDirection.getOpposite());
                 firstMachinePos = firstMachinePos.offset(slicingDirection.getOpposite());
                 // All good - build the machine.
-                buildMachine(blockerPos, firstMachinePos, slicingDirection, machineDirection, stickyBlock);
+                BlockPos triggerObserverPosition = buildMachine(blockerPos, firstMachinePos, slicingDirection, machineDirection, stickyBlock, oppositeWallPos);
+                triggerObserverPositions.add(triggerObserverPosition);
             });
+
+            // Do nothing for this direction if there's no machines - the wiring logic would fail.
+            if (triggerObserverPositions.isEmpty())
+                continue;
+
+            // Run the wiring building logic.
+            if (slicingDirection == Direction.UP) {
+                buildTriggerWiringUp(triggerObserverPositions);
+            } else if (slicingDirection != Direction.DOWN) {
+                buildTriggerWiringHorizontal(triggerObserverPositions, slicingDirection);
+            } else {
+                // Direction.DOWN... no support for automatic wiring for that.
+            }
         }
 
         // Fill all gaps in walls with moss. This should be way cheaper than using tons of obsidian.
@@ -230,18 +243,98 @@ public class GeodesyCore {
         buildClock(clockPos, Direction.WEST, Direction.NORTH);
     }
 
+    private void buildTriggerWiringHorizontal(List<BlockPos> observerPositions, Direction slicingDirection) {
+        // Skip the wiring if there are no observers.
+        if (observerPositions.isEmpty())
+            return;
+
+        // Calculate the volume containing the trigger observers.
+        BlockBox observersVolume = BlockBox.encompassPositions(observerPositions).orElseThrow();
+
+        // Calculate the lower edge of the trigger volume (shaped 1x1xN blocks).
+        IterableBlockBox triggerVolumeLowerEdge = new IterableBlockBox(
+                observersVolume.getMinX(), observersVolume.getMinY(), observersVolume.getMinZ(),
+                observersVolume.getMaxX(), observersVolume.getMinY(), observersVolume.getMaxZ());
+
+        // Build the trigger wiring along the lower edge.
+        triggerVolumeLowerEdge.forEachPosition(triggerPos -> {
+            // Calculate the 1x1 vertical box that encompasses all the possible observer positions in the current slice.
+            IterableBlockBox observersBox = new IterableBlockBox(
+                triggerPos.getX(), observersVolume.getMinY(), triggerPos.getZ(),
+                triggerPos.getX(), observersVolume.getMaxY(), triggerPos.getZ());
+
+            // Create a list of all needed scaffolding positions in this slice.
+            List<BlockPos> scaffoldingPositions = observerPositions.stream()
+                    // Extract all the observers belonging to the current slice
+                    .filter(blockPos -> observersBox.contains(blockPos))
+                    // Offset them all one block out, to become needed scaffolding positions
+                    .map(blockPos -> blockPos.offset(slicingDirection))
+                    .collect(Collectors.toList());
+            if (!scaffoldingPositions.isEmpty()) {
+                // Add the bottom scaffolding, which is always needed no matter what.
+                scaffoldingPositions.add(triggerPos.offset(slicingDirection));
+            }
+
+            /*
+             * Wiring:
+             *
+             *  n <#
+             *  1 <#
+             *  0 o##
+             * -1  -@.
+             * -2    F
+             *    0123
+             *
+             * o build origin (lower block of the observer tower) a.k.a. triggerPos
+             * < observer
+             * # scaffolding
+             * - trapdoor
+             * @ target
+             * . redstone dust
+             * F full block
+             *
+             * In slices without observers, the only blocks placed are solid and redstone dust.
+             */
+
+            // Place solid block and redstone wire - these are always placed.
+            world.setBlockState(triggerPos.offset(slicingDirection, 3).offset(Direction.UP, -2), FULL_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
+            world.setBlockState(triggerPos.offset(slicingDirection, 3).offset(Direction.UP, -1), Blocks.REDSTONE_WIRE.getDefaultState(), NOTIFY_LISTENERS);
+
+            // The rest of wiring only applies if there are any observers present.
+            if (!scaffoldingPositions.isEmpty()) {
+                world.setBlockState(triggerPos.offset(slicingDirection, 1).offset(Direction.UP, -1), Blocks.IRON_TRAPDOOR.getDefaultState().with(TrapdoorBlock.FACING, slicingDirection).with(TrapdoorBlock.HALF, BlockHalf.TOP), NOTIFY_LISTENERS);
+                world.setBlockState(triggerPos.offset(slicingDirection, 2).offset(Direction.UP, -1), Blocks.TARGET.getDefaultState(), NOTIFY_LISTENERS);
+                world.setBlockState(triggerPos.offset(slicingDirection, 2).offset(Direction.UP, 0), Blocks.SCAFFOLDING.getDefaultState().with(ScaffoldingBlock.DISTANCE, 0), NOTIFY_LISTENERS);
+                IterableBlockBox scaffoldingBox = new IterableBlockBox(BlockBox.encompassPositions(scaffoldingPositions).orElseThrow());
+                scaffoldingBox.forEachPosition(scaffoldingPos -> {
+                    world.setBlockState(scaffoldingPos, Blocks.SCAFFOLDING.getDefaultState().with(ScaffoldingBlock.DISTANCE, 0), NOTIFY_LISTENERS);
+                });
+            }
+        });
+
+        // Place all the observers last, so they don't trigger.
+        observerPositions.forEach(observerPos -> {
+            world.setBlockState(observerPos, Blocks.OBSERVER.getDefaultState().with(Properties.FACING, slicingDirection), NOTIFY_LISTENERS);
+        });
+    }
+
+    private void buildTriggerWiringUp(List<BlockPos> observerPositions) {
+        // Upper flying machines get a solid block that will carry redstone dust.
+        observerPositions.forEach(blockPos -> {
+            world.setBlockState(blockPos, FULL_BLOCK.getDefaultState());
+            world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
+        });
+    }
+
     private void buildWalls(IterableBlockBox wallsBox) {
         for (Direction slicingDirection: Direction.values()) {
-            // Skip the top/bottom walls.
-            if (slicingDirection == Direction.UP || slicingDirection == Direction.DOWN)
+            // Skip the top wall (lid).
+            if (slicingDirection == Direction.UP)
                 continue;
             wallsBox.slice(slicingDirection.getAxis(), iterableBlockBox -> {
-                BlockPos end1 = iterableBlockBox.getEndpoint(slicingDirection);
-                BlockPos end2 = iterableBlockBox.getEndpoint(slicingDirection.getOpposite());
-                if (!PRESERVE_WALL_BLOCKS.contains(world.getBlockState(end1).getBlock()))
-                    world.setBlockState(end1, Blocks.MOSS_BLOCK.getDefaultState());
-                if (!PRESERVE_WALL_BLOCKS.contains(world.getBlockState(end2).getBlock()))
-                    world.setBlockState(end2, Blocks.MOSS_BLOCK.getDefaultState());
+                BlockPos end = iterableBlockBox.getEndpoint(slicingDirection);
+                if (!PRESERVE_WALL_BLOCKS.contains(world.getBlockState(end).getBlock()))
+                    world.setBlockState(end, Blocks.MOSS_BLOCK.getDefaultState());
             });
         }
     }
@@ -376,7 +469,7 @@ public class GeodesyCore {
         });
     }
 
-    private void buildMachine(BlockPos blockerPos, BlockPos pos, Direction directionAlong, Direction directionUp, Block stickyBlock) {
+    private BlockPos buildMachine(BlockPos blockerPos, BlockPos pos, Direction directionAlong, Direction directionUp, Block stickyBlock, BlockPos oppositeWallPos) {
         /*
          * It looks like this:
          * S HHH
@@ -429,6 +522,10 @@ public class GeodesyCore {
 
         // Also blocker on the other end (the other wall).
         world.setBlockState(oppositeWallPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+
+        // Return the position of the observer that can trigger the machine.
+        // It will be used later (in separate logic) to create the trigger wiring.
+        return pos.offset(directionUp, 1);
     }
 
     private void buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
