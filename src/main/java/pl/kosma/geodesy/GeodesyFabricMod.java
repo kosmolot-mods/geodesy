@@ -50,7 +50,7 @@ public class GeodesyFabricMod implements ModInitializer {
                                         World world = context.getSource().getPlayer().getWorld();
                                         BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
                                         BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "end");
-                                        core.geodesyArea(world, startPos, endPos);
+                                        context.getSource().getServer().execute(() -> core.geodesyArea(world, startPos, endPos));
                                         return SINGLE_SUCCESS;
                                     }
                                     catch (Exception e) {
@@ -61,7 +61,7 @@ public class GeodesyFabricMod implements ModInitializer {
                     .then(literal("analyze").executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            core.geodesyAnalyze();
+                            context.getSource().getServer().execute(() -> core.geodesyAnalyze());
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
@@ -77,7 +77,7 @@ public class GeodesyFabricMod implements ModInitializer {
                                     String directionsString = StringArgumentType.getString(context, "directions").trim().toUpperCase();
                                     String[] directionsArray = directionsString.split("\\s+");
                                     Direction[] directions = Arrays.stream(directionsArray).map(Direction::valueOf).toArray(Direction[]::new);
-                                    core.geodesyProject(directions);
+                                    context.getSource().getServer().execute(() -> core.geodesyProject(directions));
                                     return SINGLE_SUCCESS;
                                 }
                                 catch (Exception e) {
@@ -88,7 +88,7 @@ public class GeodesyFabricMod implements ModInitializer {
                     .then(literal("assemble").executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            core.geodesyAssemble();
+                            context.getSource().getServer().execute(() -> core.geodesyAssemble());
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
@@ -99,7 +99,7 @@ public class GeodesyFabricMod implements ModInitializer {
                     .executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            core.geodesyGeodesy();
+                            context.getSource().getServer().execute(() -> core.geodesyGeodesy());
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
