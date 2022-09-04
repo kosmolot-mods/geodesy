@@ -155,6 +155,10 @@ public class GeodesyCore {
     }
 
     void geodesyAssemble() {
+        // Plop the clock at the top
+        BlockPos clockPos = new BlockPos((geode.getMinX()+geode.getMaxX())/2+3, geode.getMaxY()+CLOCK_Y_OFFSET, (geode.getMinZ()+geode.getMaxZ())/2+1);
+        BlockPos torchPos = buildClock(clockPos, Direction.WEST, Direction.NORTH);
+
         // Run along all the axes and move all slime/honey blocks inside the frame.
         for (Direction direction: Direction.values()) {
             geode.slice(direction.getAxis(), slice -> {
@@ -226,7 +230,7 @@ public class GeodesyCore {
 
             // Run the wiring building logic.
             if (slicingDirection == Direction.UP) {
-                buildTriggerWiringUp(triggerObserverPositions);
+                buildTriggerWiringUp(triggerObserverPositions, torchPos);
             } else if (slicingDirection != Direction.DOWN) {
                 buildTriggerWiringHorizontal(triggerObserverPositions, slicingDirection);
             } else {
@@ -237,10 +241,6 @@ public class GeodesyCore {
         // Fill all gaps in walls with moss. This should be way cheaper than using tons of obsidian.
         IterableBlockBox wallsBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
         buildWalls(wallsBox);
-
-        // Plop the clock at the top ¯\_(ツ)_/¯
-        BlockPos clockPos = new BlockPos((geode.getMinX()+geode.getMaxX())/2+3, geode.getMaxY()+CLOCK_Y_OFFSET, (geode.getMinZ()+geode.getMaxZ())/2+1);
-        buildClock(clockPos, Direction.WEST, Direction.NORTH);
     }
 
     private void buildTriggerWiringHorizontal(List<BlockPos> observerPositions, Direction slicingDirection) {
@@ -318,11 +318,41 @@ public class GeodesyCore {
         });
     }
 
-    private void buildTriggerWiringUp(List<BlockPos> observerPositions) {
-        // Upper flying machines get a solid block that will carry redstone dust.
+    private void buildTriggerWiringUp(List<BlockPos> observerPositions, BlockPos torchPos) {
+        /*
+         * On the top, the trigger wiring is a simple X-Y grid of redstone dust:
+         * 1. On the X axis, there is a line running across the entire trigger area up to the torch.
+              This line is on the Z coordinate of the torch.
+         * 2. On the Z axis, there are lines running from each trigger point down to the center line.
+         */
+
+        List<IterableBlockBox> lines = new ArrayList<>();
+
+        // The Z lines are per-observer.
         observerPositions.forEach(blockPos -> {
-            world.setBlockState(blockPos, FULL_BLOCK.getDefaultState());
-            world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
+            lines.add(new IterableBlockBox(
+                blockPos.getX(), blockPos.getY(), blockPos.getZ(),
+                blockPos.getX(), blockPos.getY(), torchPos.getZ()));
+        });
+
+        // The X axis line needs to connect to the trigger position area - add it.
+        // It's okay to modify it here, as no other code uses it.
+        observerPositions.add(torchPos.offset(Direction.DOWN, 2));
+        IterableBlockBox xLineArea = new IterableBlockBox(BlockBox.encompassPositions(observerPositions).orElseThrow());
+        IterableBlockBox xLine = new IterableBlockBox(
+            xLineArea.getMinX(), xLineArea.getMinY(), torchPos.getZ(),
+            xLineArea.getMaxX(), xLineArea.getMinY(), torchPos.getZ());
+        lines.add(xLine);
+
+        // Create all the lines with redstone dust on top.
+        lines.forEach(blockBox -> {
+            blockBox.forEachPosition(blockPos -> {
+                // Place a solid block if it's not already there.
+                if (world.getBlockState(blockPos).getBlock() == Blocks.AIR)
+                    world.setBlockState(blockPos, FULL_BLOCK.getDefaultState());
+                // Place redstone dust on top.
+                world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
+            });
         });
     }
 
@@ -528,7 +558,7 @@ public class GeodesyCore {
         return pos.offset(directionUp, 1);
     }
 
-    private void buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
+    private BlockPos buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
         // Platform
         for (int i=0; i<6; i++)
             for (int j=0; j<3; j++)
@@ -562,24 +592,29 @@ public class GeodesyCore {
         // Dropper (41 sticks)
         world.setBlockState(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.DROPPER.getDefaultState().with(Properties.FACING, directionMain));
         DropperBlockEntity dropper = (DropperBlockEntity) world.getBlockEntity(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 1));
-        if (dropper == null) return;
-        ItemStack sticks41 = Items.STICK.getDefaultStack(); sticks41.setCount(41);
-        dropper.setStack(0, sticks41);
-        dropper.markDirty();
+        if (dropper != null) {
+            ItemStack sticks41 = Items.STICK.getDefaultStack();
+            sticks41.setCount(41);
+            dropper.setStack(0, sticks41);
+            dropper.markDirty();
+        }
 
         // Hopper (4 stacks + 49 sticks)
         world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite()));
         world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite())); // invisible block bug????
         HopperBlockEntity hopper = (HopperBlockEntity) world.getBlockEntity(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1));
-        if (hopper == null) return;
-        ItemStack sticks64 = Items.STICK.getDefaultStack(); sticks64.setCount(64);
-        ItemStack sticks49 = Items.STICK.getDefaultStack(); sticks49.setCount(49);
-        hopper.setStack(0, sticks64.copy());
-        hopper.setStack(1, sticks64.copy());
-        hopper.setStack(2, sticks64.copy());
-        hopper.setStack(3, sticks64.copy());
-        hopper.setStack(4, sticks49);
-        hopper.markDirty();
+        if (hopper != null) {
+            ItemStack sticks64 = Items.STICK.getDefaultStack();
+            sticks64.setCount(64);
+            ItemStack sticks49 = Items.STICK.getDefaultStack();
+            sticks49.setCount(49);
+            hopper.setStack(0, sticks64.copy());
+            hopper.setStack(1, sticks64.copy());
+            hopper.setStack(2, sticks64.copy());
+            hopper.setStack(3, sticks64.copy());
+            hopper.setStack(4, sticks49);
+            hopper.markDirty();
+        }
 
         // The other two hoppers (empty)
         world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite()));
@@ -600,6 +635,9 @@ public class GeodesyCore {
         world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 0).offset(Direction.UP, 1), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain.getOpposite()));
         world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain));
         world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain.getOpposite()));
+
+        // Return torch position
+        return startPos.offset(directionMain, -1);
     }
 
     /*
