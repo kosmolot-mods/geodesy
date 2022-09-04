@@ -1,5 +1,7 @@
 # Geodesy
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y726QMH)
+
 Small Fabric mod for calculating amethyst farm flying machine layout.
 Inspired by [ilmango's video](https://www.youtube.com/watch?v=fY90xF3ug84) and
 the flying machine based farm made by neffty87.
