@@ -40,8 +40,8 @@ public class GeodesyCore {
     static final int CLOCK_Y_OFFSET = 13;
     static final Block WORK_AREA_WALL = Blocks.TINTED_GLASS;
     static final Block FULL_BLOCK = Blocks.IRON_BLOCK;
-    static final Set<Block> MARKERS_BLOCKER = Sets.newHashSet(Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, Blocks.BLACK_STAINED_GLASS);
-    static final Set<Block> MARKERS_MACHINE = Sets.newHashSet(Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, Blocks.RED_STAINED_GLASS);
+    static final Set<Block> MARKERS_BLOCKER = Sets.newHashSet(Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL);
+    static final Set<Block> MARKERS_MACHINE = Sets.newHashSet(Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD);
     static final Set<Block> PRESERVE_BLOCKS = Sets.newHashSet(Blocks.BUDDING_AMETHYST, Blocks.COMMAND_BLOCK);
     static final Set<Block> STICKY_BLOCKS = Sets.newHashSet(Blocks.SLIME_BLOCK, Blocks.HONEY_BLOCK);
 
