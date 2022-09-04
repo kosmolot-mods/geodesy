@@ -44,6 +44,7 @@ public class GeodesyCore {
     static final Set<Block> MARKERS_MACHINE = Sets.newHashSet(Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD);
     static final Set<Block> PRESERVE_BLOCKS = Sets.newHashSet(Blocks.BUDDING_AMETHYST, Blocks.COMMAND_BLOCK);
     static final Set<Block> STICKY_BLOCKS = Sets.newHashSet(Blocks.SLIME_BLOCK, Blocks.HONEY_BLOCK);
+    static final Set<Block> PRESERVE_WALL_BLOCKS = Sets.newHashSet(Blocks.SLIME_BLOCK, Blocks.HONEY_BLOCK, Blocks.OBSIDIAN);
 
     static final Logger LOGGER = LoggerFactory.getLogger("GeodesyCore");
 
@@ -89,7 +90,7 @@ public class GeodesyCore {
 
         // Render a frame.
         IterableBlockBox frameBoundingBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
-        frameBoundingBox.forEachEdgePosition(blockPos -> world.setBlockState(blockPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS));
+        frameBoundingBox.forEachEdgePosition(blockPos -> world.setBlockState(blockPos, Blocks.MOSS_BLOCK.getDefaultState(), NOTIFY_LISTENERS));
 
         // Do nothing more if we have no directions - this signifies we just want
         // to draw the frame and do nothing else.
@@ -175,7 +176,8 @@ public class GeodesyCore {
         for (Direction slicingDirection: Direction.values()) {
             geode.slice(slicingDirection.getAxis(), slice -> {
                 // Check for blocker marker block.
-                BlockPos blockerPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET+2);
+                BlockPos blockerPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET + 2);
+                BlockPos oppositeWallPos = slice.getEndpoint(slicingDirection.getOpposite()).offset(slicingDirection, -WALL_OFFSET);
                 if (!MARKERS_BLOCKER.contains(world.getBlockState(blockerPos).getBlock()))
                     return;
                 // Find the position of the first machine block.
@@ -209,7 +211,7 @@ public class GeodesyCore {
                 else
                     return;
                 // Important: the actual machine is built one block closer to the geode
-                // than the player-placed markers are. Also wipe out the blocker glass because
+                // than the player-placed markers are. Also wipe out the blocker marker because
                 // it doesn't get removed otherwise.
                 world.setBlockState(blockerPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
                 blockerPos = blockerPos.offset(slicingDirection.getOpposite());
@@ -219,9 +221,29 @@ public class GeodesyCore {
             });
         }
 
+        // Fill all gaps in walls with moss. This should be way cheaper than using tons of obsidian.
+        IterableBlockBox wallsBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
+        buildWalls(wallsBox);
+
         // Plop the clock at the top ¯\_(ツ)_/¯
         BlockPos clockPos = new BlockPos((geode.getMinX()+geode.getMaxX())/2+3, geode.getMaxY()+CLOCK_Y_OFFSET, (geode.getMinZ()+geode.getMaxZ())/2+1);
         buildClock(clockPos, Direction.WEST, Direction.NORTH);
+    }
+
+    private void buildWalls(IterableBlockBox wallsBox) {
+        for (Direction slicingDirection: Direction.values()) {
+            // Skip the top/bottom walls.
+            if (slicingDirection == Direction.UP || slicingDirection == Direction.DOWN)
+                continue;
+            wallsBox.slice(slicingDirection.getAxis(), iterableBlockBox -> {
+                BlockPos end1 = iterableBlockBox.getEndpoint(slicingDirection);
+                BlockPos end2 = iterableBlockBox.getEndpoint(slicingDirection.getOpposite());
+                if (!PRESERVE_WALL_BLOCKS.contains(world.getBlockState(end1).getBlock()))
+                    world.setBlockState(end1, Blocks.MOSS_BLOCK.getDefaultState());
+                if (!PRESERVE_WALL_BLOCKS.contains(world.getBlockState(end2).getBlock()))
+                    world.setBlockState(end2, Blocks.MOSS_BLOCK.getDefaultState());
+            });
+        }
     }
 
     private void prepareWorkArea(boolean force) {
@@ -338,22 +360,19 @@ public class GeodesyCore {
             if (hasBlock.get())
                 wallBlock = Blocks.CRYING_OBSIDIAN;
             else if (hasCluster.get())
-                wallBlock = Blocks.MOSS_BLOCK;
+                wallBlock = Blocks.PUMPKIN;
             else
                 wallBlock = Blocks.AIR;
             // If this location has a flying machine, wipe out everything in that slice
             // to simulate the flying machine doing its work.
-            if (wallBlock == Blocks.MOSS_BLOCK) {
+            if (wallBlock == Blocks.PUMPKIN) {
                 slice.forEachPosition(blockPos -> {
                     world.setBlockState(blockPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
                 });
             }
             // Set sidewall block
             BlockPos wallPos = slice.getEndpoint(direction).offset(direction, WALL_OFFSET);
-            world.setBlockState(wallPos, wallBlock.getDefaultState());
-            // Set the opposite block to crying obsidian.
-            BlockPos blockerPos = slice.getEndpoint(direction.getOpposite()).offset(direction.getOpposite(), WALL_OFFSET);
-            world.setBlockState(blockerPos, Blocks.CRYING_OBSIDIAN.getDefaultState());
+            world.setBlockState(wallPos, wallBlock.getDefaultState(), NOTIFY_LISTENERS);
         });
     }
 
@@ -361,8 +380,8 @@ public class GeodesyCore {
         /*
          * It looks like this:
          * S HHH
-         * S HVHH[<NB
-         * SB[L>]SSS
+         * S HVHH[<N<
+         * SB[L>]SSSB
          */
         // Blocker block.
         world.setBlockState(blockerPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
@@ -406,7 +425,10 @@ public class GeodesyCore {
         world.setBlockState(pos.offset(directionUp, 1), Blocks.OBSERVER.getDefaultState().with(Properties.FACING, directionAlong), NOTIFY_LISTENERS);
         pos = pos.offset(directionAlong, 2);
         // [SKIP AGAIN!] Eighth layer: blocker
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.CRYING_OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+        world.setBlockState(pos.offset(directionUp, 0), Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+
+        // Also blocker on the other end (the other wall).
+        world.setBlockState(oppositeWallPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
     }
 
     private void buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
