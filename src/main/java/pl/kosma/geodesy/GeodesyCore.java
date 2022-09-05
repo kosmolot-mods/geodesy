@@ -570,8 +570,7 @@ public class GeodesyCore {
         world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 1).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
         world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 2).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
 
-        // Torch and lever
-        world.setBlockState(startPos.offset(directionMain, -1), Blocks.REDSTONE_WALL_TORCH.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()));
+        // Lever
         world.setBlockState(startPos.offset(directionMain, -1).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.LEVER.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()).with(Properties.POWERED, true));
 
         // Four redstone dusts
@@ -580,7 +579,7 @@ public class GeodesyCore {
                 .with(Properties.WEST_WIRE_CONNECTION, WireConnection.SIDE)
                 .with(Properties.NORTH_WIRE_CONNECTION, WireConnection.SIDE)
                 .with(Properties.SOUTH_WIRE_CONNECTION, WireConnection.SIDE);
-        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 0).offset(Direction.UP, 1), redstoneDustPlus);
+        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 0).offset(Direction.UP, 1), redstoneDustPlus.with(Properties.POWER, 2));
         world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 2).offset(Direction.UP, 2), redstoneDustPlus);
         world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 0).offset(Direction.UP, 1), redstoneDustPlus);
         world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 2).offset(Direction.UP, 2), redstoneDustPlus);
@@ -636,8 +635,10 @@ public class GeodesyCore {
         world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain));
         world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain.getOpposite()));
 
-        // Return torch position
-        return startPos.offset(directionMain, -1);
+        // Torch gotta be last
+        BlockPos torchPos = startPos.offset(directionMain, -1);
+        world.setBlockState(torchPos, Blocks.REDSTONE_WALL_TORCH.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()).with(Properties.LIT, false));
+        return torchPos;
     }
 
     /*
