@@ -350,8 +350,9 @@ public class GeodesyCore {
                 // Place a solid block if it's not already there.
                 if (world.getBlockState(blockPos).getBlock() == Blocks.AIR)
                     world.setBlockState(blockPos, FULL_BLOCK.getDefaultState());
-                // Place redstone dust on top.
-                world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
+                // Place redstone dust on top if it's not already there.
+                if (world.getBlockState(blockPos.offset(Direction.UP)).getBlock() == Blocks.AIR)
+                    world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
             });
         });
     }
