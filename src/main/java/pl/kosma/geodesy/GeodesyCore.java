@@ -115,7 +115,7 @@ public class GeodesyCore {
             BlockState blockState = world.getBlockState(blockPos);
             if (blockState.getBlock() == Blocks.AMETHYST_CLUSTER) {
                 clustersLeft.getAndIncrement();
-                BlockState button = Blocks.POLISHED_BLACKSTONE_BUTTON.getDefaultState();
+                BlockState button = Blocks.SPRUCE_BUTTON.getDefaultState();
                 Direction facing = blockState.get(Properties.FACING);
                 button = switch (facing) {
                     case DOWN -> button.with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.CEILING);
