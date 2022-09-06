@@ -1,10 +1,13 @@
 package pl.kosma.geodesy;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.minecraft.block.Blocks;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
@@ -41,23 +44,78 @@ public class GeodesyFabricMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(literal("geodesy")
                     .requires(source -> source.hasPermissionLevel(2))
-                    .then(literal("area")
+                    // debug only - command line custom water collection system generator
+/*
+                    .then(literal("water")
                         .then(argument("start", BlockPosArgumentType.blockPos())
-                            .then(argument("end", BlockPosArgumentType.blockPos())
-                                .executes(context -> {
-                                    try {
-                                        GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                        World world = context.getSource().getPlayer().getWorld();
-                                        BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
-                                        BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "end");
-                                        context.getSource().getServer().execute(() -> core.geodesyArea(world, startPos, endPos));
-                                        return SINGLE_SUCCESS;
-                                    }
-                                    catch (Exception e) {
-                                        LOGGER.error("area", e);
-                                        throw (e);
-                                    }
-                                }))))
+                            .then(argument("sizeX", IntegerArgumentType.integer(9, 18))
+                                    .then(argument("sizeZ", IntegerArgumentType.integer(9, 18))
+                                            .then(argument("waterX", IntegerArgumentType.integer(0, 9))
+                                                    .then(argument("waterZ", IntegerArgumentType.integer(0, 9))
+                                                        .executes(context -> {
+                                                            try {
+                                                                World world = context.getSource().getPlayer().getWorld();
+                                                                BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
+                                                                int sizeX = IntegerArgumentType.getInteger(context, "sizeX");
+                                                                int sizeZ = IntegerArgumentType.getInteger(context, "sizeZ");
+                                                                int waterX = IntegerArgumentType.getInteger(context, "waterX");
+                                                                int waterZ = IntegerArgumentType.getInteger(context, "waterZ");
+                                                                context.getSource().getServer().execute(() -> WaterCollectionSystemGenerator.generateWater(world, startPos, sizeX, sizeZ, waterX, waterZ));
+                                                                return SINGLE_SUCCESS;
+                                                            }
+                                                            catch (Exception e) {
+                                                                LOGGER.error("area", e);
+                                                                throw (e);
+                                                            }
+                                                        })))))))
+
+
+*/
+/*
+                    // debug only - directly execute the water collection generator
+                    .then(literal("watergen")
+                            .then(argument("start", BlockPosArgumentType.blockPos())
+                                    .then(argument("sizeX", IntegerArgumentType.integer())
+                                            .then(argument("sizeZ", IntegerArgumentType.integer())
+                                            .executes(context -> {
+                                                    try {
+                                                        World world = context.getSource().getPlayer().getWorld();
+                                                        BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
+                                                        int sizeX = IntegerArgumentType.getInteger(context, "sizeX");
+                                                        int sizeZ = IntegerArgumentType.getInteger(context, "sizeZ");
+                                                        BlockBox area = new BlockBox(startPos.getX(), startPos.getY(), startPos.getZ(),
+                                                                startPos.getX() + sizeX - 1, startPos.getY(), startPos.getZ() + sizeZ - 1);
+                                                        context.getSource().getServer().execute(() -> {
+                                                            new IterableBlockBox(area).forEachPosition(blockPos -> {
+                                                                world.setBlockState(blockPos, Blocks.AIR.getDefaultState());
+                                                            });
+                                                            WaterCollectionSystemGenerator.generate(world, area);
+                                                        });
+                                                        return SINGLE_SUCCESS;
+                                                    }
+                                                    catch (Exception e) {
+                                                        LOGGER.error("area", e);
+                                                        throw (e);
+                                                    }
+                                            })))))
+*/
+                    .then(literal("area")
+                            .then(argument("start", BlockPosArgumentType.blockPos())
+                                    .then(argument("end", BlockPosArgumentType.blockPos())
+                                            .executes(context -> {
+                                                try {
+                                                    GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                                                    World world = context.getSource().getPlayer().getWorld();
+                                                    BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
+                                                    BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "end");
+                                                    context.getSource().getServer().execute(() -> core.geodesyArea(world, startPos, endPos));
+                                                    return SINGLE_SUCCESS;
+                                                }
+                                                catch (Exception e) {
+                                                    LOGGER.error("area", e);
+                                                    throw (e);
+                                                }
+                                            }))))
                     .then(literal("analyze").executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());

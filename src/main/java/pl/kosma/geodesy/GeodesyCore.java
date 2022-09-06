@@ -241,6 +241,9 @@ public class GeodesyCore {
         // Fill all gaps in walls with moss. This should be way cheaper than using tons of obsidian.
         IterableBlockBox wallsBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
         buildWalls(wallsBox);
+
+        // Generate the water collection system.
+        WaterCollectionSystemGenerator.generate(world, geode.expand(WALL_OFFSET - 1));
     }
 
     private void buildTriggerWiringHorizontal(List<BlockPos> observerPositions, Direction slicingDirection) {
