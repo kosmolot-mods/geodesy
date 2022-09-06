@@ -127,6 +127,8 @@ public class WaterCollectionSystemGenerator {
             for (Corner corner : generationCorners) {
                 // Place a water source one block above the ground.
                 world.setBlockState(corner.start.up(), water);
+                // Place a solid block under the water so items can't get stuck there (they did in testing).
+                world.setBlockState(corner.start, Blocks.MOSS_BLOCK.getDefaultState());
                 // Place the clockwise water sources, starting at block 2 (see trick above).
                 for (int i = 2; i <= fill; i++)
                     world.setBlockState(corner.start.offset(corner.direction, i), water);
