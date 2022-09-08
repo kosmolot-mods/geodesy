@@ -362,13 +362,15 @@ public class GeodesyCore {
 
     private void buildWalls(IterableBlockBox wallsBox) {
         for (Direction slicingDirection: Direction.values()) {
-            // Skip the top wall (lid).
-            if (slicingDirection == Direction.UP)
-                continue;
+            // Top wall (lid) is transparent but we still run the processing
+            // to remove all blocks that should be removed.
+            BlockState wallBlock = (slicingDirection == Direction.UP) ?
+                    Blocks.AIR.getDefaultState() :
+                    Blocks.MOSS_BLOCK.getDefaultState();
             wallsBox.slice(slicingDirection.getAxis(), iterableBlockBox -> {
                 BlockPos end = iterableBlockBox.getEndpoint(slicingDirection);
                 if (!PRESERVE_WALL_BLOCKS.contains(world.getBlockState(end).getBlock()))
-                    world.setBlockState(end, Blocks.MOSS_BLOCK.getDefaultState());
+                    world.setBlockState(end, wallBlock);
             });
         }
     }
