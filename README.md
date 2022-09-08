@@ -2,8 +2,8 @@
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y726QMH)
 
-Small Fabric mod for calculating amethyst farm flying machine layout.
-Inspired by [ilmango's video](https://www.youtube.com/watch?v=fY90xF3ug84) and
+Small Fabric mod for calculating amethyst farm flying machine layout. Inspired by
+the original [ilmango's video](https://www.youtube.com/watch?v=fY90xF3ug84) and
 the flying machine based farm made by neffty87.
 
 ## Usage
@@ -12,6 +12,10 @@ You should only run this in disposable worlds, either in single player or on ser
 where you have op. Command blocks must also be enabled.
 
 **The mod *will* destroy the immediate surroundings of the geode!**
+
+### Video Tutorial by ilmango
+
+[![Video Tutorial by ilmango](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/video.png)](https://www.youtube.com/c/ilmango/videos)
 
 ### Step 1: Geode
 
@@ -37,7 +41,7 @@ volume and the mod will find the geode anyway. The only time you have to be care
 is when you have two geodes very close to each other (this is also the reason we don't
 have autodetection - it easily got confused with multiple geodes nearby).
 
-Here I run `/geodesy area 259 -37 -1459 277 -50 -1477`:
+Here I run `/geodesy area 701 -24 -945 712 -15 -934`:
 
 ![Geode area excavated, bounding box displayed.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode2.png)
 
@@ -57,10 +61,10 @@ Here I run `/geodesy analyze`:
 Run `/geodesy project (directions)` to project the geode onto three planes and create
 the farm structure:
 
-* Moss block means this location contains amethyst clusters to be pushed and destroyed.
+* Pumpkin means this location contains amethyst clusters to be pushed and destroyed.
 * Crying obsidian block means this location contains budding amethyst blocks, so
   the flying machine must not fly through that location.
-* Obsidian marks the outer frame of the machine.
+* Moss marks the outer frame of the machine.
 * Buttons inside the farm mark spots that can't be harvested; you should have those
   buttons in the farm to prevent items from landing on unharvested amethyst clusters.
 
@@ -72,30 +76,26 @@ efficiency of the farm:
   you can also change up/down but that will make item collection pretty weird.
 * You can choose to only include one or two directions instead of the usual three.
   This will lower the farm's efficiency but can also mean much less work to do.
-* You can change the order of the directions to influence the shapes of the moss formations.
+* You can change the order of the directions to influence the shapes of the pumpkin formations.
   Some formations are easier to cover with sticky blocks than other. Experiment to find out.
 
-In this particular geode's case, I decided to only use two directions as that gets me to 96% efficiency.
-Adding the third direction only improves the efficiency by further 2%. I also choose the order of
-"south up" as it generates simpler moss patterns.
-
-Here I run `/geodesy project south up`:
+Here I run `/geodesy project east south up`:
 
 ![Projection done.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode4.png)
 
 ### Step 5: Sticky blocks
 
-Place the slime and honey blocks outside the structure, as shown by ilmango. All moss
-blocks should be covered; no crying obsidian blocks should be covered. If you can't cover
-all moss blocks, the efficiency of the farm will be slightly reduced.
+Place the slime and honey blocks outside the structure, as shown by ilmango in the video.
+All pumpkin blocks should be covered; no crying obsidian blocks should be covered. If you
+can't cover all pumpkin blocks, the efficiency of the farm will be slightly reduced.
 
 ![Sticky block structures placed.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode5.png)
 
 ### Step 6: Marker blocks
 
 Using the supplied mob heads, place markers to indicate where the flying machines
-should go. Black mob head a blocker obsidian block, three green mob heads indicate
-a flying machine.
+should go. Black mob head markes a blocker obsidian block, three green mob heads
+indicate a flying machine.
 
 ![Flying machine markers placed.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode6.png)
 
@@ -109,12 +109,28 @@ generated for your convenience - just connect it.
 
 ### Step 8: Wiring
 
-The rest is up to you! Add trigger wiring and collection system. Again, watch ilmango's video for more information.
+The rest is up to you! Add trigger wiring and collection system. When adding repeaters to the trigger
+wiring, make sure to set them to maximum delay.  Again, watch ilmango's video for more information.
 
 ![Finished farm.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode8.png)
 
-## Authors
+## Credits
 
 * Kosma Moczek - mod concept + code
-* ilmango - farm design
+* ilmango - farm design + two great videos
 * neffty87 - farm concept
+
+## Possible improvements?
+
+There are still so many things that can be improved about the farm:
+
+1. Automatic sticky block clustering. I am aware that this problem is NP-complete but at this size
+   it can hopefully be either bruteforced or at least solved with some dynamic programming. Algorithmic
+   geniuses and their PRs are welcome.
+2. Generation of 1x2 flying machines that ilmango has shown in
+   (Scicraft S02E04)[https://www.youtube.com/watch?v=05AEd_1KQNY].
+4. Better water collection system generation. The current code struggles with weird sizes like 9x29.
+5. Better trigger wiring generation - it still requires some manual work, and I'm 100% sure it can be
+   fully automated to the point where the farm requires zero extra manual work.
+6. Perhaps an automated test suite? There's still so much stuff I have to test manually when adding
+   or changing functionality.
