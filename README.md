@@ -15,7 +15,7 @@ where you have op. Command blocks must also be enabled.
 
 ### Video Tutorial by ilmango
 
-[![Video Tutorial by ilmango](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/video.png)](https://www.youtube.com/c/ilmango/videos)
+[![Video Tutorial by ilmango](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/video.jpg)](https://www.youtube.com/watch?v=9tfW5cx58CY)
 
 ### Step 1: Geode
 
