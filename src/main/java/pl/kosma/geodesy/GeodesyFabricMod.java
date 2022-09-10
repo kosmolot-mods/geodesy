@@ -2,11 +2,16 @@ package pl.kosma.geodesy;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.block.Blocks;
 import net.minecraft.command.argument.BlockPosArgumentType;
+import net.minecraft.command.argument.serialize.ConstantArgumentSerializer;
+import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
@@ -14,10 +19,7 @@ import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static com.mojang.brigadier.Command.SINGLE_SUCCESS;
 import static net.minecraft.server.command.CommandManager.argument;
@@ -41,6 +43,7 @@ public class GeodesyFabricMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        ArgumentTypeRegistry.registerArgumentType(new Identifier("geodesy", "direction"), DirectionArgumentType.class, ConstantArgumentSerializer.of(DirectionArgumentType::direction));
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(literal("geodesy")
                     .requires(source -> source.hasPermissionLevel(2))
@@ -128,21 +131,19 @@ public class GeodesyFabricMod implements ModInitializer {
                         }
                     }))
                     .then(literal("project")
-                        .then(argument("directions", StringArgumentType.greedyString())
-                            .executes(context -> {
-                                try {
-                                    GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                    String directionsString = StringArgumentType.getString(context, "directions").trim().toUpperCase();
-                                    String[] directionsArray = directionsString.split("\\s+");
-                                    Direction[] directions = Arrays.stream(directionsArray).map(Direction::valueOf).toArray(Direction[]::new);
-                                    context.getSource().getServer().execute(() -> core.geodesyProject(directions));
-                                    return SINGLE_SUCCESS;
-                                }
-                                catch (Exception e) {
-                                    LOGGER.error("project", e);
-                                    throw (e);
-                                }
-                            })))
+                        .then(argument("direction1", DirectionArgumentType.direction())
+                            .then(argument("direction2", DirectionArgumentType.direction())
+                                .then(argument("direction3", DirectionArgumentType.direction())
+                                    .then(argument("direction4", DirectionArgumentType.direction())
+                                        .then(argument("direction5", DirectionArgumentType.direction())
+                                            .then(argument("direction6", DirectionArgumentType.direction())
+                                                .executes(context -> geodesyProjectCommand(context,6)))
+                                            .executes(context -> geodesyProjectCommand(context,5)))
+                                        .executes(context -> geodesyProjectCommand(context,4)))
+                                    .executes(context -> geodesyProjectCommand(context,3)))
+                                .executes(context -> geodesyProjectCommand(context,2)))
+                            .executes(context -> geodesyProjectCommand(context,1)))
+                        .executes(context -> geodesyProjectCommand(context,0)))
                     .then(literal("assemble").executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
@@ -167,5 +168,20 @@ public class GeodesyFabricMod implements ModInitializer {
                     })
             );
         });
+    }
+
+    private int geodesyProjectCommand(CommandContext<ServerCommandSource> context, int argumentIndex) {
+        try {
+            GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+            Set<Direction> directions = new LinkedHashSet<>(argumentIndex);
+            for (int i = 1; i <= argumentIndex; i++) {
+                directions.add(DirectionArgumentType.getDirection(context, "direction" + i));
+            }
+            context.getSource().getServer().execute(() -> core.geodesyProject(directions.isEmpty() ? null : directions.toArray(new Direction[argumentIndex])));
+            return SINGLE_SUCCESS;
+        } catch (Exception e) {
+            LOGGER.error("project", e);
+            throw (e);
+        }
     }
 }

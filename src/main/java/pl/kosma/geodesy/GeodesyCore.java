@@ -145,8 +145,8 @@ public class GeodesyCore {
         geodesyProject(new Direction[]{Direction.SOUTH});
         geodesyProject(new Direction[]{Direction.UP});
         geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.UP});
         geodesyProject(new Direction[]{Direction.SOUTH, Direction.UP});
-        geodesyProject(new Direction[]{Direction.UP, Direction.EAST});
         geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH, Direction.UP});
         // Clean up the results of the last projection.
         geodesyProject(null);
