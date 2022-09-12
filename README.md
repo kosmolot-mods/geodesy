@@ -122,15 +122,4 @@ wiring, make sure to set them to maximum delay.  Again, watch ilmango's video fo
 
 ## Possible improvements?
 
-There are still so many things that can be improved about the farm:
-
-1. Automatic sticky block clustering. I am aware that this problem is NP-complete but at this size
-   it can hopefully be either bruteforced or at least solved with some dynamic programming. Algorithmic
-   geniuses and their PRs are welcome.
-2. Generation of 1x2 flying machines that ilmango has shown in
-   [Scicraft S02E04](https://www.youtube.com/watch?v=05AEd_1KQNY).
-4. Better water collection system generation. The current code struggles with weird sizes like 9x29.
-5. Better trigger wiring generation - it still requires some manual work, and I'm 100% sure it can be
-   fully automated to the point where the farm requires zero extra manual work.
-6. Perhaps an automated test suite? There's still so much stuff I have to test manually when adding
-   or changing functionality.
+For a list of things to do, see [TODO.md](TODO.md).
