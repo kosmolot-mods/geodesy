@@ -48,6 +48,7 @@ public class GeodesyCore {
 
     private World world;
     private IterableBlockBox geode;
+    private List<BlockPos> buddingAmethystPositions;
 
     public void geodesyGeodesy() {
         sendCommandFeedback("Welcome to Geodesy!");
@@ -422,23 +423,36 @@ public class GeodesyCore {
                 Math.max(pos1.getZ(), pos2.getZ())
         ));
 
-        // Scan the box, marking any positions with budding amethyst.
-        List<BlockPos> amethystPositions = new ArrayList<>();
+        // Scan the box, marking any positions with budding amethyst, and
+        // calculate the minimum bounding box that contains these positions.
+        buddingAmethystPositions = new ArrayList<>();
+        AtomicInteger minX = new AtomicInteger(Integer.MAX_VALUE);
+        AtomicInteger minY = new AtomicInteger(Integer.MAX_VALUE);
+        AtomicInteger minZ = new AtomicInteger(Integer.MAX_VALUE);
+        AtomicInteger maxX = new AtomicInteger(Integer.MIN_VALUE);
+        AtomicInteger maxY = new AtomicInteger(Integer.MIN_VALUE);
+        AtomicInteger maxZ = new AtomicInteger(Integer.MIN_VALUE);
         scanBox.forEachPosition(blockPos -> {
-            if (world.getBlockState(blockPos).getBlock() == Blocks.BUDDING_AMETHYST)
-                amethystPositions.add(blockPos);
+            if (world.getBlockState(blockPos).getBlock() == Blocks.BUDDING_AMETHYST) {
+                buddingAmethystPositions.add(blockPos);
+                // Expand the bounding box to include this position.
+                if (blockPos.getX() < minX.get()) minX.set(blockPos.getX());
+                else if (blockPos.getX() > maxX.get()) maxX.set(blockPos.getX());
+                if (blockPos.getY() < minY.get()) minY.set(blockPos.getY());
+                else if (blockPos.getY() > maxY.get()) maxY.set(blockPos.getY());
+                if (blockPos.getZ() < minZ.get()) minZ.set(blockPos.getZ());
+                else if (blockPos.getZ() > maxZ.get()) maxZ.set(blockPos.getZ());
+            }
         });
 
-        // Calculate the minimum bounding box that contains these positions.
-        // The expand is to make sure we grab all the amethyst clusters as well.
-        BlockBox geodeBox = BlockBox.encompassPositions(amethystPositions).orElse(null);
-        if (geodeBox == null) {
+        if (minX.get() == Integer.MAX_VALUE) {
             sendCommandFeedback("I can't find any budding amethyst in the area you gave me. :(");
             return;
         } else {
             sendCommandFeedback("Geode found. Now verify it's detected correctly and run /geodesy analyze.");
         }
-        geode = new IterableBlockBox(geodeBox.expand(1));
+        // Expand 1 to make sure we grab all the amethyst clusters as well.
+        geode = new IterableBlockBox(minX.get(), minY.get(), minZ.get(), maxX.get(), maxY.get(), maxZ.get()).expand(1);
     }
 
     private void highlightGeode() {

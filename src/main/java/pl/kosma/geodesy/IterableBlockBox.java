@@ -98,7 +98,7 @@ class IterableBlockBox extends BlockBox {
     }
 
     // Backported from 1.18 because in 1.17 this function mutates state.
-    public BlockBox expand(int offset) {
-        return new BlockBox(this.getMinX() - offset, this.getMinY() - offset, this.getMinZ() - offset, this.getMaxX() + offset, this.getMaxY() + offset, this.getMaxZ() + offset);
+    public IterableBlockBox expand(int offset) {
+        return new IterableBlockBox(this.getMinX() - offset, this.getMinY() - offset, this.getMinZ() - offset, this.getMaxX() + offset, this.getMaxY() + offset, this.getMaxZ() + offset);
     }
 }
