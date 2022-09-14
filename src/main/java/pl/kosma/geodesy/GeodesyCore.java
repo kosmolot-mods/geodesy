@@ -15,6 +15,7 @@ import net.minecraft.item.Items;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
+import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
@@ -23,8 +24,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.ref.WeakReference;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -48,7 +51,10 @@ public class GeodesyCore {
 
     private World world;
     private IterableBlockBox geode;
+    // The following list must contain all budding amethyst in the area.
     private List<BlockPos> buddingAmethystPositions;
+    // The following list must contain all amethyst clusters in the area.
+    private List<Pair<BlockPos, Direction>> amethystClusterPositions;
 
     public void geodesyGeodesy() {
         sendCommandFeedback("Welcome to Geodesy!");
@@ -78,7 +84,8 @@ public class GeodesyCore {
 
         // Detect the geode area.
         detectGeode(startPos, endPos);
-        prepareWorkArea(false);
+        prepareWorkArea(true);
+        countClusters();
         highlightGeode();
     }
 
@@ -96,13 +103,6 @@ public class GeodesyCore {
         if (directions == null)
             return;
 
-        // Count the amethyst clusters (for efficiency calculation).
-        AtomicInteger clustersTotal = new AtomicInteger();
-        geode.forEachPosition(blockPos -> {
-            if (world.getBlockState(blockPos).getBlock() == Blocks.AMETHYST_CLUSTER) {
-                clustersTotal.getAndIncrement();
-            }
-        });
 
         // Run the projection.
         for (Direction direction: directions) {
@@ -112,29 +112,25 @@ public class GeodesyCore {
         // Replace all remaining amethyst clusters with buttons so items can't
         // fall on them and get stuck.
         AtomicInteger clustersLeft = new AtomicInteger();
-        geode.forEachPosition(blockPos -> {
-            BlockState blockState = world.getBlockState(blockPos);
-            if (blockState.getBlock() == Blocks.AMETHYST_CLUSTER) {
+        amethystClusterPositions.forEach(blockPosDirectionPair -> {
+            if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AMETHYST_CLUSTER) {
                 clustersLeft.getAndIncrement();
-                BlockState button = Blocks.SPRUCE_BUTTON.getDefaultState();
-                Direction facing = blockState.get(Properties.FACING);
-                button = switch (facing) {
-                    case DOWN -> button.with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.CEILING);
-                    case UP -> button.with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.FLOOR);
-                    default -> button.with(Properties.HORIZONTAL_FACING, facing);
-                };
-                world.setBlockState(blockPos, button, NOTIFY_LISTENERS);
+                world.setBlockState(blockPosDirectionPair.getLeft(), switch (blockPosDirectionPair.getRight()) {
+                    case DOWN -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.CEILING);
+                    case UP -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.FLOOR);
+                    default -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.HORIZONTAL_FACING, blockPosDirectionPair.getRight());
+                }, NOTIFY_LISTENERS);
             }
         });
-        int clustersCollected = clustersTotal.get() - clustersLeft.get();
+        int clustersCollected = amethystClusterPositions.size() - clustersLeft.get();
 
         // Re-grow the buds so they are visible.
         this.growClusters();
 
         // Calculate and show layout efficiency.
-        float efficiency = 100f * (clustersTotal.get()-clustersLeft.get()) / clustersTotal.get();
+        float efficiency = 100f * (clustersCollected) / amethystClusterPositions.size();
         String layoutName = String.join(" ", Arrays.stream(directions).map(Direction::toString).collect(Collectors.joining(" ")));
-        sendCommandFeedback(" %s: %d%% (%d/%d)", layoutName, (int) efficiency, clustersCollected, clustersTotal.get());
+        sendCommandFeedback(" %s: %d%% (%d/%d)", layoutName, (int) efficiency, clustersCollected, amethystClusterPositions.size());
     }
 
     public void geodesyAnalyze() {
@@ -437,11 +433,11 @@ public class GeodesyCore {
                 buddingAmethystPositions.add(blockPos);
                 // Expand the bounding box to include this position.
                 if (blockPos.getX() < minX.get()) minX.set(blockPos.getX());
-                else if (blockPos.getX() > maxX.get()) maxX.set(blockPos.getX());
+                if (blockPos.getX() > maxX.get()) maxX.set(blockPos.getX());
                 if (blockPos.getY() < minY.get()) minY.set(blockPos.getY());
-                else if (blockPos.getY() > maxY.get()) maxY.set(blockPos.getY());
+                if (blockPos.getY() > maxY.get()) maxY.set(blockPos.getY());
                 if (blockPos.getZ() < minZ.get()) minZ.set(blockPos.getZ());
-                else if (blockPos.getZ() > maxZ.get()) maxZ.set(blockPos.getZ());
+                if (blockPos.getZ() > maxZ.get()) maxZ.set(blockPos.getZ());
             }
         });
 
@@ -473,50 +469,79 @@ public class GeodesyCore {
         structure.markDirty();
     }
 
-    private void growClusters() {
-        geode.forEachPosition(blockPos -> {
-            if (world.getBlockState(blockPos).getBlock() == Blocks.BUDDING_AMETHYST) {
-                for (Direction direction: Direction.values()) {
-                    BlockPos budPos = blockPos.offset(direction);
-                    if (world.getBlockState(budPos).getBlock() == Blocks.AIR)
-                        world.setBlockState(budPos, Blocks.AMETHYST_CLUSTER.getDefaultState().with(AmethystClusterBlock.FACING, direction));
+    /**
+     * Count all possible clusters from each budding block.
+     */
+    private void countClusters() {
+        amethystClusterPositions = new ArrayList<>();
+        buddingAmethystPositions.forEach(blockPos -> {
+            for (Direction direction : Direction.values()) {
+                BlockPos budPos = blockPos.offset(direction);
+                if (world.getBlockState(budPos).getBlock() == Blocks.AIR) {
+                    amethystClusterPositions.add(new Pair<>(budPos, direction));
                 }
             }
         });
     }
 
-    private void projectGeode(Direction direction) {
-        geode.slice(direction.getAxis(), slice -> {
-            // For each slice, determine the block composition
-            AtomicBoolean hasBlock = new AtomicBoolean(false);
-            AtomicBoolean hasCluster = new AtomicBoolean(false);
-            slice.forEachPosition(blockPos -> {
-                BlockState blockState = world.getBlockState(blockPos);
-                Block block = blockState.getBlock();
-                if (block == Blocks.BUDDING_AMETHYST)
-                    hasBlock.set(true);
-                if (block == Blocks.AMETHYST_CLUSTER)
-                    hasCluster.set(true);
-            });
-            // Choose sidewall block type depending on the block composition on the slice
-            Block wallBlock;
-            if (hasBlock.get())
-                wallBlock = Blocks.CRYING_OBSIDIAN;
-            else if (hasCluster.get())
-                wallBlock = Blocks.PUMPKIN;
-            else
-                wallBlock = Blocks.AIR;
-            // If this location has a flying machine, wipe out everything in that slice
-            // to simulate the flying machine doing its work.
-            if (wallBlock == Blocks.PUMPKIN) {
-                slice.forEachPosition(blockPos -> {
-                    world.setBlockState(blockPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
-                });
+    /**
+     * Set all the clusters positions to cluster blocks if it is currently air.
+     */
+    private void growClusters() {
+        amethystClusterPositions.forEach(blockPosDirectionPair -> {
+            if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AIR) {
+                world.setBlockState(blockPosDirectionPair.getLeft(), Blocks.AMETHYST_CLUSTER.getDefaultState().with(AmethystClusterBlock.FACING, blockPosDirectionPair.getRight()));
             }
-            // Set sidewall block
-            BlockPos wallPos = slice.getEndpoint(direction).offset(direction, WALL_OFFSET);
-            world.setBlockState(wallPos, wallBlock.getDefaultState(), NOTIFY_LISTENERS);
         });
+    }
+
+    /**
+     * Project the geode to a plane in a direction
+     * Slices with budding amethyst(s) are marked with crying obsidian.
+     * Slices with amethyst cluster(s) that needs to be harvested are marked with pumpkin.
+     * @param direction The direction to project the geode to.
+     * @author Kosma Moczek, Kevinthegreat
+     */
+    private void projectGeode(Direction direction) {
+        // Mark wall for slices with budding amethysts.
+        buddingAmethystPositions.forEach(blockPos -> {
+            BlockPos wallPos = getWallPos(blockPos, direction);
+            world.setBlockState(wallPos, Blocks.CRYING_OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+        });
+        // Mark wall for slices that needs to be harvested and have no budding amethysts.
+        amethystClusterPositions.forEach(blockPosDirectionPair -> {
+            // Check if the cluster is harvested.
+            if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AMETHYST_CLUSTER) {
+                BlockPos wallPos = getWallPos(blockPosDirectionPair.getLeft(), direction);
+                BlockPos oppositeWallPos = getWallPos(blockPosDirectionPair.getLeft(), direction.getOpposite());
+                // Check if the slice is marked with budding amethyst.
+                if (world.getBlockState(wallPos).getBlock() != Blocks.CRYING_OBSIDIAN) {
+                    // Mark all clusters in the slice as harvested.
+                    BlockPos.iterate(wallPos, oppositeWallPos).forEach(pos -> {
+                        world.setBlockState(pos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                    });
+                    world.setBlockState(wallPos, Blocks.PUMPKIN.getDefaultState(), NOTIFY_LISTENERS);
+                }
+            }
+        });
+    }
+
+    /**
+     * Get the position on the wall (with wall offset) of the geode bounding box for a position in a direction.
+     * @param blockPos The block position.
+     * @param direction The direction.
+     * @return The position on the wall (with wall offset).
+     * @author Kevinthegreat
+     */
+    private BlockPos getWallPos(BlockPos blockPos, Direction direction) {
+        return switch (direction) {
+            case SOUTH -> new BlockPos(geode.getMaxX() + WALL_OFFSET, blockPos.getY(), blockPos.getZ());
+            case UP -> new BlockPos(blockPos.getX(), geode.getMaxY() + WALL_OFFSET, blockPos.getZ());
+            case EAST -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.getMaxZ() + WALL_OFFSET);
+            case NORTH -> new BlockPos(geode.getMinX() - WALL_OFFSET, blockPos.getY(), blockPos.getZ());
+            case DOWN -> new BlockPos(blockPos.getX(), geode.getMinY() - WALL_OFFSET, blockPos.getZ());
+            case WEST -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.getMinZ() - WALL_OFFSET);
+        };
     }
 
     private BlockPos buildMachine(BlockPos blockerPos, BlockPos pos, Direction directionAlong, Direction directionUp, Block stickyBlock, BlockPos oppositeWallPos) {
