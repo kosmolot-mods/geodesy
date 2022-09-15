@@ -23,6 +23,7 @@ import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,9 +51,12 @@ public class GeodesyCore {
     static final Logger LOGGER = LoggerFactory.getLogger("GeodesyCore");
 
     private World world;
+    @Nullable
     private IterableBlockBox geode;
     // The following list must contain all budding amethyst in the area.
+    @Nullable
     private List<BlockPos> buddingAmethystPositions;
+    @Nullable
     // The following list must contain all amethyst clusters in the area.
     private List<Pair<BlockPos, Direction>> amethystClusterPositions;
 
@@ -84,14 +88,24 @@ public class GeodesyCore {
 
         // Detect the geode area.
         detectGeode(startPos, endPos);
-        prepareWorkArea(true);
-        countClusters();
-        highlightGeode();
+        if (geode != null) {
+            prepareWorkArea(true);
+            countClusters();
+            highlightGeode();
+        }
     }
 
     void geodesyProject(Direction[] directions) {
+        // Return if geodesy area has not been run yet.
+        if (geode == null || buddingAmethystPositions == null || amethystClusterPositions == null) {
+            sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
+            return;
+        }
+
         // Expand the area and clear it out for work purposes.
         this.prepareWorkArea(true);
+
+        // Grow and count all amethyst (for efficiency calculation).
         this.growClusters();
 
         // Render a frame.
@@ -136,6 +150,12 @@ public class GeodesyCore {
     public void geodesyAnalyze() {
         sendCommandFeedback("---");
 
+        // Return if geodesy area has not been run yet.
+        if (geode == null) {
+            sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
+            return;
+        }
+
         // Run all possible projections and show the efficiencies.
         sendCommandFeedback("Projection efficiency:");
         geodesyProject(new Direction[]{Direction.EAST});
@@ -152,6 +172,12 @@ public class GeodesyCore {
     }
 
     void geodesyAssemble() {
+        // Return if geodesy area has not been run yet.
+        if (geode == null) {
+            sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
+            return;
+        }
+
         // Plop the clock at the top
         BlockPos clockPos = new BlockPos((geode.getMinX()+geode.getMaxX())/2+3, geode.getMaxY()+CLOCK_Y_OFFSET, (geode.getMinZ()+geode.getMaxZ())/2+1);
         BlockPos torchPos = buildClock(clockPos, Direction.WEST, Direction.NORTH);
@@ -443,6 +469,8 @@ public class GeodesyCore {
 
         if (minX.get() == Integer.MAX_VALUE) {
             sendCommandFeedback("I can't find any budding amethyst in the area you gave me. :(");
+            geode = null;
+            amethystClusterPositions = null;
             return;
         } else {
             sendCommandFeedback("Geode found. Now verify it's detected correctly and run /geodesy analyze.");
