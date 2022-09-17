@@ -1,6 +1,6 @@
 # Geodesy
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Y8Y726QMH)
+[![Discord chat](https://img.shields.io/badge/chat%20on-discord-7289DA?logo=discord&logoColor=white)](https://kosma.pl/discord) [![CurseForge downloads](http://cf.way2muchnoise.eu/title/geodesy.svg)](https://www.curseforge.com/minecraft/mc-mods/geodesy) [![Buy me a Ko-Fi](https://img.shields.io/badge/Buy%20me%20a-Ko--Fi-ff69b4?logo=ko-fi)](https://ko-fi.com/kosmolot)
 
 Small Fabric mod for calculating amethyst farm flying machine layout. Inspired by
 the original [ilmango's video](https://www.youtube.com/watch?v=fY90xF3ug84) and
