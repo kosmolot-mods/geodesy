@@ -417,7 +417,8 @@ public class GeodesyCore {
         // Place walls inside to prevent water and falling blocks from going bonkers.
         IterableBlockBox wallsBoundingBox = new IterableBlockBox(workBoundingBox.expand(1));
         wallsBoundingBox.forEachWallPosition(blockPos -> {
-            world.setBlockState(blockPos, WORK_AREA_WALL.getDefaultState(), NOTIFY_LISTENERS);
+            if (!PRESERVE_BLOCKS.contains(world.getBlockState(blockPos).getBlock()))
+                world.setBlockState(blockPos, WORK_AREA_WALL.getDefaultState(), NOTIFY_LISTENERS);
         });
 
         // Add a command block to allow the player to reeexecute the command easily.
