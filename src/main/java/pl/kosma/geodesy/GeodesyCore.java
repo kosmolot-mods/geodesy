@@ -563,12 +563,12 @@ public class GeodesyCore {
      */
     private BlockPos getWallPos(BlockPos blockPos, Direction direction) {
         return switch (direction) {
-            case NORTH -> new BlockPos(geode.getMinX(), blockPos.getY(), blockPos.getZ() - WALL_OFFSET);
-            case SOUTH -> new BlockPos(geode.getMaxX(), blockPos.getY(), blockPos.getZ() + WALL_OFFSET);
-            case EAST -> new BlockPos(blockPos.getX() + WALL_OFFSET, blockPos.getY(), geode.getMaxZ());
-            case WEST -> new BlockPos(blockPos.getX() - WALL_OFFSET, blockPos.getY(), geode.getMinZ());
+            case EAST -> new BlockPos(geode.getMaxX() + WALL_OFFSET, blockPos.getY(), blockPos.getZ());
+            case WEST -> new BlockPos(geode.getMinX() - WALL_OFFSET, blockPos.getY(), blockPos.getZ());
             case UP -> new BlockPos(blockPos.getX(), geode.getMaxY() + WALL_OFFSET, blockPos.getZ());
             case DOWN -> new BlockPos(blockPos.getX(), geode.getMinY() - WALL_OFFSET, blockPos.getZ());
+            case SOUTH -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.getMaxZ() + WALL_OFFSET);
+            case NORTH -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.getMinZ() - WALL_OFFSET);
         };
     }
 
