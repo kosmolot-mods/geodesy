@@ -25,6 +25,7 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api-deprecated:${project.fabric_version}"
 
     include 'tools.aqua:z3-turnkey:4.11.2'
+    implementation 'tools.aqua:z3-turnkey:4.11.2'
 }
 
 processResources {
