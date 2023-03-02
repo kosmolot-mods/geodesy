@@ -47,6 +47,7 @@ public class GeodesyFabricMod implements ModInitializer {
                                     .then(literal("test").executes(context -> {var proj = new Projection();
                                                                            proj.buildSolver(context);
                                                                            var model = proj.solve(context);
+                                                                           proj.postProcess(model);
                                                                            proj.applyModelToWorld(model, context);
                                                                            return SINGLE_SUCCESS;}))
                     // debug only - command line custom water collection system generator

@@ -27,6 +27,7 @@ public class Projection {
     private Map<GeodesyPlanePos, BoolExpr> planePosBoolMap;
 
     private Map<GeodesyBlockPos, Set<GeodesyPlanePos>> blockPosPlanePosMap;
+    private Map<GeodesyPlanePos, Set<GeodesyBlockPos>> planePosBlockPosMap;
 
     private Context ctx;
     private Solver solver;
@@ -52,11 +53,13 @@ public class Projection {
         // For all buds, clusters, and planes, generate the slices and a mapping from blockPos to planePos
         this.slices = new HashSet<>();
         this.blockPosPlanePosMap = new HashMap<>();
+        this.planePosBlockPosMap = new HashMap<>();
         for (PlaneEnum plane : PlaneEnum.values()) {
             for (GeodesyBlockPos blockPos : Stream.of(buddingAmethysts, amethystClusters).flatMap(Set::stream).toList()) {
                 GeodesyPlanePos planePos = GeodesyPlanePos.fromBlockPos(blockPos, plane);
                 slices.add(planePos);
                 blockPosPlanePosMap.computeIfAbsent(blockPos, k -> new HashSet<>()).add(planePos);
+                planePosBlockPosMap.computeIfAbsent(planePos, k -> new HashSet<>()).add(blockPos);
             }
         }
     }
@@ -307,6 +310,22 @@ public class Projection {
         return model;
     }
 
+    public void postProcess(Model model) {
+        // We minimized the number of active slices.
+        // Since slices are a boolean, that means that we got more blocked slices (obsidian) as a result.
+        // For these blocked slices, we can remove them if they don't intersect with any active budding amethysts
+        planePosBoolMap = planePosBoolMap.entrySet().stream()
+            .filter(entry ->
+                switch (model.eval(entry.getValue(), false).getBoolValue()) {
+                    case Z3_L_TRUE -> true;
+                    case Z3_L_UNDEF -> false;
+                    case Z3_L_FALSE -> planePosBlockPosMap.get(entry.getKey()).stream()
+                                       .filter(buddingAmethysts::contains)
+                                       .anyMatch(geodesyBlockPos -> model.eval(budBoolMap.get(geodesyBlockPos), false)
+                                                                    .getBoolValue() == Z3_lbool.Z3_L_TRUE);})
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
     public void applyModelToWorld(Model model, CommandContext<ServerCommandSource> context) {
         if (model == null) {
             context.getSource().sendFeedback(Text.of("No model to paste in the world!"), false);
@@ -357,7 +376,8 @@ public class Projection {
         // Passing null makes it crash once it tries to interact with Minecraft, but if we launch it from here
         // we don't have a Minecraft instance anyway
         proj.buildSolver(null);
-        proj.solve(null);
+        Model model = proj.solve(null);
+        proj.postProcess(model);
     }
 
 }
