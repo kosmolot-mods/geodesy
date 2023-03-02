@@ -1,23 +1,20 @@
 package pl.kosma.geodesy;
 
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.block.Blocks;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.serialize.ConstantArgumentSerializer;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.kosma.geodesy.projection.Projection;
 
 import java.util.*;
 
@@ -47,6 +44,11 @@ public class GeodesyFabricMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(literal("geodesy")
                     .requires(source -> source.hasPermissionLevel(2))
+                                    .then(literal("test").executes(context -> {var proj = new Projection();
+                                                                           proj.buildSolver(context);
+                                                                           var model = proj.solve(context);
+                                                                           proj.applyModelToWorld(model, context);
+                                                                           return SINGLE_SUCCESS;}))
                     // debug only - command line custom water collection system generator
 /*
                     .then(literal("water")
