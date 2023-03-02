@@ -1,7 +1,7 @@
 package pl.kosma.geodesy.projection;
 
-import java.util.Set;
-import java.util.stream.Collectors;
+import net.minecraft.util.math.BlockPos;
+
 import java.util.stream.Stream;
 
 /**
@@ -29,5 +29,13 @@ public record GeodesyPlanePos(PlaneEnum plane, int a, int b) {
     public Stream<GeodesyPlanePos> neighbours() {
         return Stream.of(new int[][]{{0, 1}, {1, 0}, {0, -1}, {-1, 0}})
                 .map(offset -> this.offset(offset[0], offset[1]));
+    }
+
+    public BlockPos toBlockPos(int x, int y, int z) {
+        return switch (this.plane()) {
+            case X -> new BlockPos(x, this.a + y, this.b + z);
+            case Y -> new BlockPos(this.a + x, y, this.b + z);
+            case Z -> new BlockPos(this.a + x, this.b + y, z);
+        };
     }
 }
