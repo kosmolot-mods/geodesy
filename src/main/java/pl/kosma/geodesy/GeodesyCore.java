@@ -22,19 +22,21 @@ import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.kosma.geodesy.projection.Projection;
 
 import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static net.minecraft.block.Block.NOTIFY_LISTENERS;
 
 public class GeodesyCore {
+    static private final Map<UUID, GeodesyCore> perPlayerCore = new HashMap<>();
 
     // Build-time adjustments.
     static final int BUILD_MARGIN = 16;
@@ -50,7 +52,44 @@ public class GeodesyCore {
 
     static final Logger LOGGER = LoggerFactory.getLogger("GeodesyCore");
 
+    /*
+     * A little kludge to avoid having to pass the "player" around all the time;
+     * instead we rely on the caller setting it before calling methods on us.
+     * We use a weak reference, so we don't keep the player around (we don't own it).
+     */
+    private final WeakReference<ServerPlayerEntity> player;
     private World world;
+    public World getWorld() { return world; }
+
+    private final Lock coreLock;
+
+    private GeodesyCore(ServerPlayerEntity player) {
+        this.coreLock = new ReentrantLock();
+        this.player = new WeakReference<>(player);
+    }
+
+    /**
+     * Provides the only way for classes outside GeodesyCore to access a core for a player.
+     * It takes care of per-player locking so no multi-threading issues can arise.
+     */
+    public static void executeForPlayer(ServerPlayerEntity player, Consumer<GeodesyCore> consumer) {
+        UUID uuid = player.getUuid();
+        GeodesyCore core = perPlayerCore.computeIfAbsent(uuid, k -> new GeodesyCore(player));
+
+        if (!core.coreLock.tryLock()) {
+            player.sendMessage(Text.of(
+                    "Geodesy commands cannot run in parallel. " +
+                    "Cancel the previous command or wait for it to finish before trying another command."));
+            return;
+        }
+
+        try {
+            consumer.accept(core);
+        } finally {
+            core.coreLock.unlock();
+        }
+    }
+
     @Nullable
     private IterableBlockBox geode;
     // The following list must contain all budding amethyst in the area.
@@ -715,18 +754,6 @@ public class GeodesyCore {
         return torchPos;
     }
 
-    /*
-     * A little kludge to avoid having to pass the "player" around all the time;
-     * instead we rely on the caller setting it before calling methods on us.
-     * We use a weak reference, so we don't keep the player around (we don't own it).
-     */
-
-    private WeakReference<ServerPlayerEntity> player;
-
-    public void setPlayerEntity(ServerPlayerEntity player) {
-        this.player = new WeakReference<>(player);
-    }
-
     private void sendCommandFeedback(Text message) {
         ServerPlayerEntity serverPlayerEntity = player.get();
         if (serverPlayerEntity == null) {
@@ -736,7 +763,7 @@ public class GeodesyCore {
         serverPlayerEntity.sendMessage(message);
     }
 
-    private void sendCommandFeedback(String format, Object... args) {
+    public void sendCommandFeedback(String format, Object... args) {
         sendCommandFeedback(Text.of(String.format(format, args)));
     }
 }
