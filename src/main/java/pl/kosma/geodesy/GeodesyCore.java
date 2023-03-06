@@ -27,6 +27,8 @@ import pl.kosma.geodesy.projection.Projection;
 import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -39,9 +41,9 @@ public class GeodesyCore {
     static private final Map<UUID, GeodesyCore> perPlayerCore = new HashMap<>();
 
     // Build-time adjustments.
-    static final int BUILD_MARGIN = 16;
-    static final int WALL_OFFSET = 2;
-    static final int CLOCK_Y_OFFSET = 13;
+    public static final int BUILD_MARGIN = 16;
+    public static final int WALL_OFFSET = 2;
+    public static final int CLOCK_Y_OFFSET = 13;
     static final Block WORK_AREA_WALL = Blocks.TINTED_GLASS;
     static final Block FULL_BLOCK = Blocks.IRON_BLOCK;
     static final Set<Block> MARKERS_BLOCKER = Sets.newHashSet(Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL);
@@ -57,15 +59,15 @@ public class GeodesyCore {
      * instead we rely on the caller setting it before calling methods on us.
      * We use a weak reference, so we don't keep the player around (we don't own it).
      */
-    private final WeakReference<ServerPlayerEntity> player;
+    private WeakReference<ServerPlayerEntity> player;
     private World world;
     public World getWorld() { return world; }
+    private Projection projection;
 
     private final Lock coreLock;
 
-    private GeodesyCore(ServerPlayerEntity player) {
+    private GeodesyCore() {
         this.coreLock = new ReentrantLock();
-        this.player = new WeakReference<>(player);
     }
 
     /**
@@ -74,8 +76,8 @@ public class GeodesyCore {
      */
     public static void executeForPlayer(ServerPlayerEntity player, Consumer<GeodesyCore> consumer) {
         UUID uuid = player.getUuid();
-        GeodesyCore core = perPlayerCore.computeIfAbsent(uuid, k -> new GeodesyCore(player));
-
+        GeodesyCore core = perPlayerCore.computeIfAbsent(uuid, k -> new GeodesyCore());
+        core.player = new WeakReference<>(player);
         if (!core.coreLock.tryLock()) {
             player.sendMessage(Text.of(
                     "Geodesy commands cannot run in parallel. " +
@@ -92,6 +94,7 @@ public class GeodesyCore {
 
     @Nullable
     private IterableBlockBox geode;
+    public IterableBlockBox getGeode() { return geode; }
     // The following list must contain all budding amethyst in the area.
     @Nullable
     private List<BlockPos> buddingAmethystPositions;
@@ -132,6 +135,26 @@ public class GeodesyCore {
             countClusters();
             highlightGeode();
         }
+    }
+
+    void geodesyProjectSat() throws TimeoutException {
+        projection = new Projection(this, buddingAmethystPositions);
+        projection.buildSolver();
+        projection.solve();
+        projection.postProcess();
+        sendCommandFeedback("Finished computing projections. Run /geodesy build_projection to paste it in the world!");
+    }
+
+    public void geodesyRemoveNaivelyHarvestedClustersFromWorld() {
+        projection.removeNaivelyHarvestedClustersFromWorld();
+    }
+
+    public void geodesyRemoveSatHarvestedClustersFromWorld() {
+        projection.removeSatHarvestedClustersFromWorld();
+    }
+
+    void geodesyBuildProjection(Collection<Direction> directions) {
+        projection.applyModelToWorld(directions);
     }
 
     void geodesyProject(Direction[] directions) {

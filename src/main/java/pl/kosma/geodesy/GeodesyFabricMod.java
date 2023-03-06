@@ -7,18 +7,19 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.serialize.ConstantArgumentSerializer;
 import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
-import org.apache.commons.lang3.concurrent.ConcurrentException;
-import org.apache.commons.lang3.concurrent.ConcurrentRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.kosma.geodesy.projection.Projection;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.mojang.brigadier.Command.SINGLE_SUCCESS;
 import static net.minecraft.server.command.CommandManager.argument;
@@ -34,12 +35,20 @@ public class GeodesyFabricMod implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(literal("geodesy")
                     .requires(source -> source.hasPermissionLevel(2))
-                                    .then(literal("test").executes(context -> {var proj = new Projection();
-                                                                           proj.buildSolver(context);
-                                                                           var model = proj.solve(context);
-                                                                           proj.postProcess(model);
-                                                                           proj.applyModelToWorld(model, context);
-                                                                           return SINGLE_SUCCESS;}))
+                    .then(literal("test").executes(context -> {
+                        GeodesyCore.executeForPlayer(context.getSource().getPlayer(),
+                            core -> {
+                                try {
+                                    var proj = new Projection();
+                                    proj.buildSolver();
+                                    proj.solve();
+                                    proj.postProcess();
+                                    proj.applyModelToWorld(Set.of(Direction.EAST, Direction.SOUTH, Direction.UP));
+                                } catch (TimeoutException e) {
+                                    context.getSource().sendError(Text.of(e.getMessage()));
+                                }
+                            });
+                        return SINGLE_SUCCESS;}))
                     // debug only - command line custom water collection system generator
 /*
                     .then(literal("water")
@@ -123,6 +132,59 @@ public class GeodesyFabricMod implements ModInitializer {
                             throw (e);
                         }
                     }))
+                    .then(literal("sat_project")
+                        .executes(context -> {
+                            try {
+                                new Thread(() -> GeodesyCore.executeForPlayer(
+                                    context.getSource().getPlayer(),
+                                    core -> {
+                                        try {
+                                            core.geodesyProjectSat();
+                                        } catch (TimeoutException e) {
+                                            context.getSource().sendError(Text.of(e.getMessage()));
+                                        }
+                                })).start();
+                                return SINGLE_SUCCESS;
+                            }
+                            catch (Exception e) {
+                                LOGGER.error("sat_project", e);
+                                throw e;
+                            }
+                        }))
+                    .then(literal("remove_naive_solution")
+                        .executes(context -> {
+                            try {
+                                GeodesyCore.executeForPlayer(context.getSource().getPlayer(), GeodesyCore::geodesyRemoveNaivelyHarvestedClustersFromWorld);
+                                return SINGLE_SUCCESS;
+                            } catch (Exception e) {
+                                LOGGER.error("remove_naive_solution", e);
+                                throw e;
+                            }
+                        }))
+                    .then(literal("remove_sat_solution")
+                        .executes(context -> {
+                            try {
+                                GeodesyCore.executeForPlayer(context.getSource().getPlayer(), GeodesyCore::geodesyRemoveSatHarvestedClustersFromWorld);
+                                return SINGLE_SUCCESS;
+                            } catch (Exception e) {
+                                LOGGER.error("remove_sat_solution", e);
+                                throw e;
+                            }
+                        }))
+                    .then(literal("build_projection")
+                        // If Minecraft has a scheduler for the serverthread for us to add a job to, we are forced to query the user for a new command.
+                        // to actually paste the projection into the world.
+                        .executes(context -> {
+                            try {
+                                GeodesyCore.executeForPlayer(context.getSource().getPlayer(),
+                                        core -> core.geodesyBuildProjection(Set.of(Direction.EAST, Direction.SOUTH, Direction.UP)));
+                                return SINGLE_SUCCESS;
+                            }
+                            catch (Exception e) {
+                                LOGGER.error("sat_project", e);
+                                throw e;
+                            }
+                        }))
                     .then(literal("project")
                         .then(argument("direction1", DirectionArgumentType.direction())
                             .then(argument("direction2", DirectionArgumentType.direction())
@@ -163,7 +225,10 @@ public class GeodesyFabricMod implements ModInitializer {
         });
     }
 
+
+
     private int geodesyProjectCommand(CommandContext<ServerCommandSource> context, int argumentIndex) {
+        System.out.println("Entered geodesyProjectCommand");
         try {
             GeodesyCore.executeForPlayer(context.getSource().getPlayer(),
             core -> {

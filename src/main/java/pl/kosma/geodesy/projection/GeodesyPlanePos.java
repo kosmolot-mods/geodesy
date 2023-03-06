@@ -1,6 +1,7 @@
 package pl.kosma.geodesy.projection;
 
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 
 import java.util.stream.Stream;
 
@@ -12,9 +13,9 @@ import java.util.stream.Stream;
  * @param a The first coordinate in a 2d grid across the plane.
  * @param b The second coordinate in a 2d grid across the plane.
  */
-public record GeodesyPlanePos(PlaneEnum plane, int a, int b) {
+public record GeodesyPlanePos(Direction.Axis plane, int a, int b) {
 
-    public static GeodesyPlanePos fromBlockPos(GeodesyBlockPos blockPos, PlaneEnum plane) {
+    public static GeodesyPlanePos fromBlockPos(GeodesyBlockPos blockPos, Direction.Axis plane) {
         return switch (plane) {
             case X -> new GeodesyPlanePos(plane, blockPos.y(), blockPos.z());
             case Y -> new GeodesyPlanePos(plane, blockPos.x(), blockPos.z());
