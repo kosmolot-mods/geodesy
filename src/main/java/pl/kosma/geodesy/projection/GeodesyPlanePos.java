@@ -26,6 +26,14 @@ public record GeodesyPlanePos(Direction.Axis plane, int a, int b) {
     GeodesyPlanePos offset(int a, int b) {
         return new GeodesyPlanePos(this.plane, this.a + a, this.b + b);
     }
+    
+    GeodesyPlanePos offsetHorizontalPlane(int y, int xOrZ) {
+        return switch (plane) {
+            case X -> new GeodesyPlanePos(this.plane, this.a + y, this.b + xOrZ);
+            case Z -> new GeodesyPlanePos(this.plane, this.a + xOrZ, this.b + y);
+            case Y -> throw new RuntimeException("OffsetHorizontalPlane called with a non-horizontal plane!");
+        };
+    }
 
     public Stream<GeodesyPlanePos> neighbours() {
         return Stream.of(new int[][]{{0, 1}, {1, 0}, {0, -1}, {-1, 0}})
