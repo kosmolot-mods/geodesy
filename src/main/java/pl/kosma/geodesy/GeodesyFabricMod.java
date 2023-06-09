@@ -1,7 +1,6 @@
 package pl.kosma.geodesy;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry;
@@ -16,6 +15,7 @@ import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +31,14 @@ public class GeodesyFabricMod implements ModInitializer {
 
     static private final Map<UUID, GeodesyCore> perPlayerCore = new HashMap<>();
 
-    private GeodesyCore getPerPlayerCore(ServerPlayerEntity player) {
+    /**
+     * Gets the geodesy core, which handles all calculations and farm building,
+     * for a player and creates one if it does not exist.
+     *
+     * @param player the player
+     * @return the geodesy core
+     */
+    private @NotNull GeodesyCore getPerPlayerCore(@NotNull ServerPlayerEntity player) {
         UUID uuid = player.getUuid();
         if (!perPlayerCore.containsKey(uuid)) {
             perPlayerCore.put(uuid, new GeodesyCore());
@@ -41,10 +48,13 @@ public class GeodesyFabricMod implements ModInitializer {
         return core;
     }
 
+    /**
+     * Registers {@link DirectionArgumentType} and all the commands for the mod on initialization.
+     */
     @Override
     public void onInitialize() {
         ArgumentTypeRegistry.registerArgumentType(new Identifier("geodesy", "direction"), DirectionArgumentType.class, ConstantArgumentSerializer.of(DirectionArgumentType::direction));
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
             dispatcher.register(literal("geodesy")
                     .requires(source -> source.hasPermissionLevel(2))
                     // debug only - command line custom water collection system generator
@@ -57,7 +67,11 @@ public class GeodesyFabricMod implements ModInitializer {
                                                     .then(argument("waterZ", IntegerArgumentType.integer(0, 9))
                                                         .executes(context -> {
                                                             try {
-                                                                World world = context.getSource().getPlayer().getWorld();
+                                                                ServerPlayerEntity player = context.getSource().getPlayer();
+                                                                if (player == null) {
+                                                                    return SINGLE_SUCCESS;
+                                                                }
+                                                                World world = player.getWorld();
                                                                 BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
                                                                 int sizeX = IntegerArgumentType.getInteger(context, "sizeX");
                                                                 int sizeZ = IntegerArgumentType.getInteger(context, "sizeZ");
@@ -82,16 +96,18 @@ public class GeodesyFabricMod implements ModInitializer {
                                             .then(argument("sizeZ", IntegerArgumentType.integer())
                                             .executes(context -> {
                                                     try {
-                                                        World world = context.getSource().getPlayer().getWorld();
+                                                        ServerPlayerEntity player = context.getSource().getPlayer();
+                                                        if (player == null) {
+                                                            return SINGLE_SUCCESS;
+                                                        }
+                                                        World world = player.getWorld();
                                                         BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
                                                         int sizeX = IntegerArgumentType.getInteger(context, "sizeX");
                                                         int sizeZ = IntegerArgumentType.getInteger(context, "sizeZ");
                                                         BlockBox area = new BlockBox(startPos.getX(), startPos.getY(), startPos.getZ(),
                                                                 startPos.getX() + sizeX - 1, startPos.getY(), startPos.getZ() + sizeZ - 1);
                                                         context.getSource().getServer().execute(() -> {
-                                                            new IterableBlockBox(area).forEachPosition(blockPos -> {
-                                                                world.setBlockState(blockPos, Blocks.AIR.getDefaultState());
-                                                            });
+                                                            new IterableBlockBox(area).forEachPosition(blockPos -> world.setBlockState(blockPos, Blocks.AIR.getDefaultState()));
                                                             WaterCollectionSystemGenerator.generate(world, area);
                                                         });
                                                         return SINGLE_SUCCESS;
@@ -107,8 +123,12 @@ public class GeodesyFabricMod implements ModInitializer {
                                     .then(argument("end", BlockPosArgumentType.blockPos())
                                             .executes(context -> {
                                                 try {
-                                                    GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                                    World world = context.getSource().getPlayer().getWorld();
+                                                    ServerPlayerEntity player = context.getSource().getPlayer();
+                                                    if (player == null) {
+                                                        return SINGLE_SUCCESS;
+                                                    }
+                                                    GeodesyCore core = getPerPlayerCore(player);
+                                                    World world = player.getWorld();
                                                     BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
                                                     BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "end");
                                                     context.getSource().getServer().execute(() -> core.geodesyArea(world, startPos, endPos));
@@ -121,8 +141,11 @@ public class GeodesyFabricMod implements ModInitializer {
                                             }))))
                     .then(literal("analyze").executes(context -> {
                         try {
-                            GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            context.getSource().getServer().execute(() -> core.geodesyAnalyze());
+                            ServerPlayerEntity player = context.getSource().getPlayer();
+                            if (player == null) {
+                                return SINGLE_SUCCESS;
+                            }
+                            context.getSource().getServer().execute(getPerPlayerCore(player)::geodesyAnalyze);
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
@@ -146,8 +169,11 @@ public class GeodesyFabricMod implements ModInitializer {
                         .executes(context -> geodesyProjectCommand(context,0)))
                     .then(literal("assemble").executes(context -> {
                         try {
-                            GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            context.getSource().getServer().execute(() -> core.geodesyAssemble());
+                            ServerPlayerEntity player = context.getSource().getPlayer();
+                            if (player == null) {
+                                return SINGLE_SUCCESS;
+                            }
+                            context.getSource().getServer().execute(getPerPlayerCore(player)::geodesyAssemble);
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
@@ -157,8 +183,11 @@ public class GeodesyFabricMod implements ModInitializer {
                     }))
                     .executes(context -> {
                         try {
-                            GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            context.getSource().getServer().execute(() -> core.geodesyGeodesy());
+                            ServerPlayerEntity player = context.getSource().getPlayer();
+                            if (player == null) {
+                                return SINGLE_SUCCESS;
+                            }
+                            context.getSource().getServer().execute(getPerPlayerCore(player)::geodesyGeodesy);
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
@@ -166,13 +195,24 @@ public class GeodesyFabricMod implements ModInitializer {
                             throw (e);
                         }
                     })
-            );
-        });
+            )
+        );
     }
 
+    /**
+     * Execute the geodesy project with a variable number of directions.
+     *
+     * @param context       the command context
+     * @param argumentIndex the number of directions
+     * @return the command execution result
+     */
     private int geodesyProjectCommand(CommandContext<ServerCommandSource> context, int argumentIndex) {
         try {
-            GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+            ServerPlayerEntity player = context.getSource().getPlayer();
+            if (player == null) {
+                return SINGLE_SUCCESS;
+            }
+            GeodesyCore core = getPerPlayerCore(player);
             Set<Direction> directions = new LinkedHashSet<>(argumentIndex);
             for (int i = 1; i <= argumentIndex; i++) {
                 directions.add(DirectionArgumentType.getDirection(context, "direction" + i));

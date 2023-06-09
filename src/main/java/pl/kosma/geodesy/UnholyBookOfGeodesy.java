@@ -6,6 +6,9 @@ import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtString;
 
+/**
+ * Creates and holds the manual of geodesy.
+ */
 public class UnholyBookOfGeodesy {
 
     static public ItemStack summonKrivbeknih() {

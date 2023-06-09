@@ -4,6 +4,9 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.command.argument.EnumArgumentType;
 import net.minecraft.util.math.Direction;
 
+/**
+ * An argument type for directions.
+ */
 public class DirectionArgumentType extends EnumArgumentType<Direction> {
 
     private DirectionArgumentType() {
