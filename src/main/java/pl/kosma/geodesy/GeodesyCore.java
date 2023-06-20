@@ -13,13 +13,13 @@ import net.minecraft.block.enums.WireConnection;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
 import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,7 +50,7 @@ public class GeodesyCore {
 
     static final Logger LOGGER = LoggerFactory.getLogger("GeodesyCore");
 
-    private World world;
+    private ServerWorld world;
     @Nullable
     private IterableBlockBox geode;
     // The following list must contain all budding amethyst in the area.
@@ -81,7 +81,7 @@ public class GeodesyCore {
         player.getInventory().setStack(8, Items.POISONOUS_POTATO.getDefaultStack());
     }
 
-    void geodesyArea(World world, BlockPos startPos, BlockPos endPos) {
+    void geodesyArea(ServerWorld world, BlockPos startPos, BlockPos endPos) {
         sendCommandFeedback("---");
 
         this.world = world;

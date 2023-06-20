@@ -1,21 +1,17 @@
 package pl.kosma.geodesy;
 
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.block.Blocks;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.serialize.ConstantArgumentSerializer;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,9 +104,9 @@ public class GeodesyFabricMod implements ModInitializer {
                                             .executes(context -> {
                                                 try {
                                                     GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                                    World world = context.getSource().getPlayer().getWorld();
-                                                    BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
-                                                    BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "end");
+                                                    ServerWorld world = context.getSource().getPlayer().getServerWorld();
+                                                    BlockPos startPos = BlockPosArgumentType.getValidBlockPos(context, "start");
+                                                    BlockPos endPos = BlockPosArgumentType.getValidBlockPos(context, "end");
                                                     context.getSource().getServer().execute(() -> core.geodesyArea(world, startPos, endPos));
                                                     return SINGLE_SUCCESS;
                                                 }
