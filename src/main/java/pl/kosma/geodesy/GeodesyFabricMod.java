@@ -8,10 +8,11 @@ import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.serialize.ConstantArgumentSerializer;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.kosma.geodesy.projection.Projection;
@@ -111,7 +112,7 @@ public class GeodesyFabricMod implements ModInitializer {
                                                 try {
                                                     BlockPos startPos = BlockPosArgumentType.getBlockPos(context, "start");
                                                     BlockPos endPos = BlockPosArgumentType.getBlockPos(context, "end");
-                                                    World world = context.getSource().getPlayer().getWorld();
+                                                    ServerWorld world = context.getSource().getPlayer().getServerWorld();
                                                     GeodesyCore.executeForPlayer(context.getSource().getPlayer(),
                                                             core -> context.getSource().getServer().execute(() -> core.geodesyArea(world, startPos, endPos)));
                                                     return SINGLE_SUCCESS;

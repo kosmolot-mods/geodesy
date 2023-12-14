@@ -13,18 +13,18 @@ import net.minecraft.block.enums.WireConnection;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
 import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.kosma.geodesy.projection.Projection;
 
-import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -60,8 +60,8 @@ public class GeodesyCore {
      * We use a weak reference, so we don't keep the player around (we don't own it).
      */
     private WeakReference<ServerPlayerEntity> player;
-    private World world;
-    public World getWorld() { return world; }
+    private ServerWorld world;
+    public ServerWorld getWorld() { return world; }
     private Projection projection;
 
     private final Lock coreLock;
@@ -123,7 +123,7 @@ public class GeodesyCore {
         player.getInventory().setStack(8, Items.POISONOUS_POTATO.getDefaultStack());
     }
 
-    void geodesyArea(World world, BlockPos startPos, BlockPos endPos) {
+    void geodesyArea(ServerWorld world, BlockPos startPos, BlockPos endPos) {
         sendCommandFeedback("---");
 
         this.world = world;
