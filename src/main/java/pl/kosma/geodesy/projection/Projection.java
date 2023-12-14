@@ -22,6 +22,17 @@ import static java.util.function.Predicate.not;
 
 public class Projection {
     private static final Logger LOGGER = LoggerFactory.getLogger(Projection.class.getCanonicalName());
+    /***********
+     * Feature flag for the quasi-powered 1 by 1 flying machines.
+     * They're disabled for now for in the projection code since it massively complicates
+     * the clustering/flying machine placement/wiring code.
+     **********/
+    private static final boolean USE_QUASI_MACHINES = false;
+
+    private static final List<Set<List<Integer>>> QUASI_CONNECTIVITY_OFFSET_LOCATIONS =
+            List.of(Set.of(List.of(1, -1), List.of(1, -2)),
+                    Set.of(List.of(2, 0), List.of(3, 0)),
+                    Set.of(List.of(1, 1), List.of(1, 2)));
     private GeodesyCore core;
     private Set<GeodesyBlockPos> buddingAmethysts;
     private Set<GeodesyBlockPos> amethystClusters;
@@ -120,11 +131,11 @@ public class Projection {
                     && planePosBlockPosMap.get(neighbour).stream()   //
                         .anyMatch(buddingAmethysts::contains)))      // and they contain budding amethysts.
             .filter(slice ->
-                slice.plane() == Direction.Axis.Y                    // Keep slices when they are in the Y direction,
+                !USE_QUASI_MACHINES                                  // Keep slices if we don't care about
+                ||                                                   // quasi-connectivity,
+                slice.plane().isVertical()                           // or if the slices are vertical,
                 ||                                                   // or keep them when:
-                Stream.of(Set.of(List.of(1, -1), List.of(1, -2)),                                  // For all offset locations:
-                          Set.of(List.of(2, 0), List.of(3, 0)),                                    //
-                          Set.of(List.of(1, 1), List.of(1, 2)))                                    //
+                QUASI_CONNECTIVITY_OFFSET_LOCATIONS.stream()                                       // For all offset locations:
                     .noneMatch(offsetSet -> offsetSet.stream()                                     // For none of the sets of
                         .map(offset -> slice.offsetHorizontalPlane(offset.get(0), offset.get(1)))  // offset slices
                         .filter(slices::contains)                                                  // that are real,
@@ -171,22 +182,25 @@ public class Projection {
             Function.identity(),
             slice -> {
                 Set<GeodesyBlockPos> sliceBuds = planePosBlockPosMap.get(slice);
-
-                // Get all slices that have been freed by removing the sliceBuds
+                // Destroying the buds in SLICE can lead to other slices being opened up.
+                // In particular, slices in other directions that normally only contain buds in `sliceBuds`
+                // will be opened up.
+                // Here, we get all slices that are freed by removing the buds in SLICE: sliceBuds
                 var directlyFreedSlices = sliceBuds.stream()                                // For all buds in the main slice
                     .flatMap(bud -> blockPosPlanePosMap.get(bud).stream())                  // map to the buds' slices
                     .distinct()
                     .filter(changedSlice -> planePosBlockPosMap.get(changedSlice).stream()  // Keep slices only when
-                        .filter(buddingAmethysts::contains)                                 // it only has buds
-                        .noneMatch(not(sliceBuds::contains)))                               // that we remove
+                        .filter(buddingAmethysts::contains)                                 // all of its buds are
+                        .allMatch(sliceBuds::contains))                                     // removed by freeing slice
                     .collect(Collectors.toSet());
 
                 // Get all one by one hole slices that have been freed by freeing one of its neighbours
-                // NOTE: This does not account for freeing a slice through quasi-connectivity
+                // NOTE: This does not look for holes that are freed up through quasi-connectivity.
                 var freedHoleSlices = naiveOneByOneHoles.stream()
                     .filter(hole -> hole.neighbours().anyMatch(directlyFreedSlices::contains))
                     .collect(Collectors.toSet());
 
+                // Compute the number of clusters that would be freed by destroying buds in `slice`
                 return Stream.of(directlyFreedSlices, freedHoleSlices).flatMap(Set::stream)
                     .distinct()
                     .flatMap(freedSlice -> planePosBlockPosMap.get(freedSlice).stream())
@@ -196,7 +210,7 @@ public class Projection {
                     .filter(cluster ->                                  // Keep the clusters,
                         cluster.neighbours()                            // that have at least one
                         .filter(buddingAmethysts::contains)             // bud neighbour that
-                        .anyMatch(not(sliceBuds::contains)))            // is not a slice bud
+                        .anyMatch(not(sliceBuds::contains)))            // is not a slice bud (i.e. a bud that is removed by removing `slice`)
                     .count();
             }
         ));
@@ -252,117 +266,140 @@ public class Projection {
         //# We have three relations to define:
         //# Relation 1: A slice or at least one of its buds can be active, but not both
         //# Relation 2: 1x1 holes in the vertical (y) plane cannot exist
-        //# Relation 3: 1x1 holes in the horizontal (x, z) planes can exist in specific scenarios
+        //# Relation 3 if USE_QUASI_MACHINES: 1x1 holes in the horizontal (x, z) planes can exist in specific scenarios
+        //# Relation 3 if not USE_QUASI_MACHINES: 1x1 holes in the horizontal (x, z) planes cannot exist.
         //###############################################################################################
-
-        // Set relation 1: A slice or at least one of its buds can be active, but not both
-        // With quite a bit of preprocessing, we limit the slices that we pass to the SAT solver.
-        // Only when a slice with a bud in it can lead to a net gain, we allow the SAT solver control of the
-        // relevant slices and buds.
-        // In other cases, we set the slices to false and the buds to true
-        Stream<BoolExpr> sliceNandAnyBudsC = slices.stream()
-            .filter(slice -> planePosBlockPosMap.get(slice).stream().anyMatch(buddingAmethysts::contains))
-            .map(slice -> {
-                // Get the maximum netGain from all slices that interact with any of the buds in this slice
-                Long maxNetGain = planePosBlockPosMap.get(slice).stream()
-                    .flatMap(bud -> blockPosPlanePosMap.get(bud).stream())
-                    .map(indirectSlice -> sliceRemovalGainMap.get(indirectSlice) - sliceRemovalLossMap.get(indirectSlice))
-                    .max(Long::compare).orElseThrow(); // Since we filtered out budless slices before, we never throw here
-
-                BoolExpr sliceBudC;
-                if (maxNetGain > 0) {
-                    sliceBudC = ctx.mkNot(ctx.mkAnd(
-                        planePosBoolMap.get(slice),
-                        ctx.mkOr(planePosBlockPosMap.get(slice).stream()
-                            .filter(buddingAmethysts::contains)
-                            .map(budBoolMap::get)
-                            .toArray(BoolExpr[]::new))));
-                } else {
-                    // If there is never a gain for any of the slices of the buds, then there is no gain for the buds either
-                    // Hence, we can disable the slices and activate the buds
-                    sliceBudC = ctx.mkAnd(
-                        ctx.mkEq(planePosBoolMap.get(slice), ctx.mkFalse()),
-                        // This part here will have ton of duplicates: one for each slice, but we don't care for the time being
-                        // The SAT solver is perfectly equipped to handle such duplicates
-                        ctx.mkAnd(
-                            planePosBlockPosMap.get(slice).stream()
-                                .filter(buddingAmethysts::contains)
-                                .map(budBoolMap::get)
-                                .map(budBool -> ctx.mkAnd(budBool, ctx.mkTrue()))
-                                .toArray(BoolExpr[]::new))
-                    );
-                }
-                return sliceBudC;
-            }
-        );
 
         // For relations 2 and 3, we need to identify potential 1x1 holes first:
         Set<GeodesyPlanePos> potentialOneByOneHoles = slices.stream()
                 .filter(slice -> slice.neighbours().allMatch(slices::contains))
                 .collect(Collectors.toSet());
 
+        this.solver.add(buildProjectionSliceNandBuds().toArray(BoolExpr[]::new));
+        this.solver.add(buildProjectionVerticalHoleRules(potentialOneByOneHoles).toArray(BoolExpr[]::new));
+        this.solver.add(buildProjectionHorizontalHoleRules(potentialOneByOneHoles).toArray(BoolExpr[]::new));
+    }
+
+    private Stream<BoolExpr> buildProjectionSliceNandBuds() {
+        // Set relation 1: A slice or at least one of its buds can be active, but not both
+        // With quite a bit of preprocessing, we limit the slices that we pass to the SAT solver.
+        // Only when a slice with a bud in it can lead to a net gain, we allow the SAT solver control of the
+        // relevant slices and buds.
+        // In other cases, we set the slices to false and the buds to true
+        // Technically, the preprocessing makes the solver incomplete since it limits the solver's ability to
+        // detect cases where the removal of two buds together leads to an improvement, but the removal
+        // of the individual buds does not improve anything.
+        // In practice, looking for these extremely rare cases is not worth the increased problem size that it causes.
+        return slices.stream()
+                .filter(slice -> planePosBlockPosMap.get(slice).stream().anyMatch(buddingAmethysts::contains))
+                .map(slice -> {
+                    // Get the maximum netGain from all slices that interact with any of the buds in this slice
+                    Long maxNetGain = planePosBlockPosMap.get(slice).stream()
+                            .flatMap(bud -> blockPosPlanePosMap.get(bud).stream())
+                            .map(indirectSlice -> sliceRemovalGainMap.get(indirectSlice) - sliceRemovalLossMap.get(indirectSlice))
+                            .max(Long::compare).orElseThrow(); // Since we filtered out budless slices before, we never throw here
+
+                    BoolExpr sliceBudC;
+                    if (maxNetGain > 0) {
+                        sliceBudC = ctx.mkNot(ctx.mkAnd(
+                                planePosBoolMap.get(slice),
+                                ctx.mkOr(planePosBlockPosMap.get(slice).stream()
+                                        .filter(buddingAmethysts::contains)
+                                        .map(budBoolMap::get)
+                                        .toArray(BoolExpr[]::new))));
+                    } else {
+                        // If there is never a gain for any of the slices of the buds, then there is no gain for the buds either
+                        // Hence, we can disable the slices and activate the buds
+                        sliceBudC = ctx.mkAnd(
+                                ctx.mkEq(planePosBoolMap.get(slice), ctx.mkFalse()),
+                                // This part here will have ton of duplicates: one for each slice, but we don't care for the time being
+                                // The SAT solver is perfectly equipped to handle such duplicates
+                                ctx.mkAnd(
+                                        planePosBlockPosMap.get(slice).stream()
+                                                .filter(buddingAmethysts::contains)
+                                                .map(budBoolMap::get)
+                                                .map(budBool -> ctx.mkAnd(budBool, ctx.mkTrue()))
+                                                .toArray(BoolExpr[]::new))
+                        );
+                    }
+                    return sliceBudC;
+                });
+    }
+
+    private Stream<BoolExpr> buildProjectionVerticalHoleRules(Set<GeodesyPlanePos> potentialOneByOneHoles) {
         // Set relation 2: 1x1 holes in the vertical (y) plane cannot exist:
         // Written as:
         // If a potential hole in the y plane is active,
         // then at least one of its neighbours must be active too, so it is not a 1x1 hole.
-        Stream<BoolExpr> blockVerticalOneByOneHolesC = potentialOneByOneHoles.stream()
-                .filter(planePos -> planePos.plane() == Direction.Axis.Y)
+        return potentialOneByOneHoles.stream()
+                .filter(planePos -> planePos.plane().isVertical())
                 .map(planePos -> ctx.mkImplies(
                         planePosBoolMap.get(planePos),
                         ctx.mkOr(planePos.neighbours()
                                 .map(planePosBoolMap::get)
                                 .toArray(BoolExpr[]::new))));
+    }
 
-        // For relation 3, we must first create a map from each potential hole to a list of up to three sets of
-        // projections in a specific shape.
-        // If slices can be placed for all positions in at least one of those sets, the potential hole could be
-        // harvested even if it is a 1x1 hole.
-        // The following holes allow for the projection to be active
-        //     B
-        //     B
-        //   AA#CC
-        //    #H#
-        //     #
-        // Where # is blocked, H is the hole, and all A's, B's, or C's have to be free
-        Map<GeodesyPlanePos, List<Set<BoolExpr>>> potentialHolesToRequiredProjectionSets = new HashMap<>();
-        for (GeodesyPlanePos planePos : potentialOneByOneHoles) {
-            if (planePos.plane() == Direction.Axis.Y) {
-                continue;
+    private Stream<BoolExpr> buildProjectionHorizontalHoleRules(Set<GeodesyPlanePos> potentialOneByOneHoles) {
+        // Relation 3 if USE_QUASI_MACHINES: 1x1 holes in the horizontal (x, z) planes can exist in specific scenarios
+        if (USE_QUASI_MACHINES) {
+            // For relation 3, where quasi-connectivity flying machines are allowed, we must first create a map from
+            // each potential hole to a list of up to three sets of projections in a specific shape.
+            // If slices can be placed for all positions in at least one of those sets, the potential hole could be
+            // harvested even if it is a 1x1 hole.
+            // The following holes allow for the projection to be active
+            //     B
+            //     B
+            //   AA#CC
+            //    #H#
+            //     #
+            // Where # is blocked, H is the hole, and all A's, B's, or C's have to be free
+            Map<GeodesyPlanePos, List<Set<BoolExpr>>> potentialHolesToRequiredProjectionSets = new HashMap<>();
+            for (GeodesyPlanePos planePos : potentialOneByOneHoles) {
+                if (planePos.plane().isHorizontal()) {
+                    continue;
+                }
+                potentialHolesToRequiredProjectionSets.put(planePos,
+                        QUASI_CONNECTIVITY_OFFSET_LOCATIONS.stream()
+                                .map(offsetSet -> offsetSet.stream()
+                                        .map(offset -> planePos.offsetHorizontalPlane(offset.get(0), offset.get(1)))
+                                        .filter(slices::contains)
+                                        .map(planePosBoolMap::get)
+                                        .collect(Collectors.toSet())
+                                ).toList());
             }
-            potentialHolesToRequiredProjectionSets.put(planePos,
-                Stream.of(Set.of(List.of(1, -1), List.of(1, -2)),
-                          Set.of(List.of(2, 0), List.of(3, 0)),
-                          Set.of(List.of(1, 1), List.of(1, 2)))
-                .map(offsetSet -> offsetSet.stream()
-                    .map(offset -> planePos.offsetHorizontalPlane(offset.get(0), offset.get(1)))
-                    .filter(slices::contains)
-                    .map(planePosBoolMap::get)
-                    .collect(Collectors.toSet())
-                ).toList());
+
+            // Set relation 3: 1x1 holes in the horizontal (x, z) planes can exist in specific scenarios
+            // Written as:
+            // A potential hole being active while its neighbours are inactive, which is therefore a 1x1 hole,
+            // requires at least one of the sets to be fully
+            // active so the original hole can be powered.
+            // NOTE: It is intended for sets to sometimes be empty. It will just lead to an empty `and()`,
+            //       which is equivalent to `true` and therefore does not pose a problem.
+            return potentialOneByOneHoles.stream()
+                    .filter(planePos -> planePos.plane().isHorizontal())
+                    .map(planePos -> ctx.mkImplies(
+                            ctx.mkAnd(planePosBoolMap.get(planePos),
+                                    ctx.mkAnd(planePos.neighbours()
+                                            .map(planePosBoolMap::get)
+                                            .map(ctx::mkNot).toArray(BoolExpr[]::new))),
+                            ctx.mkOr(potentialHolesToRequiredProjectionSets.get(planePos).stream()
+                                    .map(required_active_group -> ctx.mkAnd(required_active_group.toArray(BoolExpr[]::new)))
+                                    .toArray(BoolExpr[]::new))
+                    ));
+        } else {// Relation 3 if not USE_QUASI_MACHINES: 1x1 holes in the horizontal (x, z) planes cannot exist.
+            // Set relation 2: 1x1 holes in the horziontal (x, z) planes cannot exist:
+            // Written as:
+            // If a potential hole in a horizontal plane is active,
+            // then at least one of its neighbours must be active too, so it is not a 1x1 hole.
+            return potentialOneByOneHoles.stream()
+                    .filter(planePos -> planePos.plane().isHorizontal())
+                    .map(planePos -> ctx.mkImplies(
+                            planePosBoolMap.get(planePos),
+                            ctx.mkOr(planePos.neighbours()
+                                    .map(planePosBoolMap::get)
+                                    .toArray(BoolExpr[]::new))));
         }
-
-        // Set relation 3: 1x1 holes in the horizontal (x, z) planes can exist in specific scenarios
-        // Written as:
-        // A potential hole being active while its neighbours are inactive, which is therefore a 1x1 hole,
-        // requires at least one of the sets to be fully
-        // active so the original hole can be powered.
-        // NOTE: It is intended for sets to sometimes be empty. It will just lead to an empty `and()`,
-        //       which is equivalent to `true` and therefore does not pose a problem.
-        Stream<BoolExpr> blockSpecificHorizontalOneByOneHolesC = potentialOneByOneHoles.stream()
-            .filter(planePos -> planePos.plane() != Direction.Axis.Y)
-            .map(planePos -> ctx.mkImplies(
-                ctx.mkAnd(planePosBoolMap.get(planePos),
-                    ctx.mkAnd(planePos.neighbours()
-                        .map(planePosBoolMap::get)
-                        .map(ctx::mkNot).toArray(BoolExpr[]::new))),
-                ctx.mkOr(potentialHolesToRequiredProjectionSets.get(planePos).stream()
-                    .map(required_active_group -> ctx.mkAnd(required_active_group.toArray(BoolExpr[]::new)))
-                    .toArray(BoolExpr[]::new))
-            ));
-
-        this.solver.add(sliceNandAnyBudsC.toArray(BoolExpr[]::new));
-        this.solver.add(blockVerticalOneByOneHolesC.toArray(BoolExpr[]::new));
-        this.solver.add(blockSpecificHorizontalOneByOneHolesC.toArray(BoolExpr[]::new));
     }
 
     private void buildMetrics() {
