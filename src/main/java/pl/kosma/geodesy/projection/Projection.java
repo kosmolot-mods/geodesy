@@ -4,7 +4,18 @@ import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.state.property.Properties;
 
-import com.microsoft.z3.*;
+
+import com.microsoft.z3.Context;
+import com.microsoft.z3.Solver;
+import com.microsoft.z3.Model;
+import com.microsoft.z3.Params;
+import com.microsoft.z3.Expr;
+import com.microsoft.z3.ArithExpr;
+import com.microsoft.z3.BoolExpr;
+import com.microsoft.z3.BoolSort;
+import com.microsoft.z3.IntExpr;
+import com.microsoft.z3.IntSort;
+import com.microsoft.z3.Status;
 import com.microsoft.z3.enumerations.Z3_lbool;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
@@ -12,8 +23,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.kosma.geodesy.GeodesyCore;
 
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.List;
+import java.util.Set;
+import java.util.Map;
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Collection;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -56,6 +73,7 @@ public class Projection {
 
     private IntExpr nrOfHarvestedClusters;
     private IntExpr nrOfProjections;
+    private IntExpr nrOfVerticalProjections;
 
     public Projection () {
         initTestGeode();
@@ -429,8 +447,18 @@ public class Projection {
             .map(IntExpr.class::cast)          // complaining, but it only shuts up the IDE.
             .toArray(IntExpr[]::new));
 
+        nrOfVerticalProjections = ctx.mkIntConst("nr_of_vertical_projections");
+        ArithExpr<IntSort> nrOfVerticalProjectionsC = ctx.mkAdd(planePosBoolMap.entrySet().stream()
+                .filter(entry -> entry.getKey().plane().isVertical())
+                .map(Map.Entry::getValue)
+                .map(planePosBool -> ctx.mkITE(planePosBool, ctx.mkInt(1), ctx.mkInt(0)))
+                .filter(IntExpr.class::isInstance)
+                .map(IntExpr.class::cast)
+                .toArray(IntExpr[]::new));
+
         solver.add(ctx.mkEq(nrOfHarvestedClusters, nrOfHarvestedClustersC));
         solver.add(ctx.mkEq(nrOfProjections, nrOfProjectionsC));
+        solver.add(ctx.mkEq(nrOfVerticalProjections, nrOfVerticalProjectionsC));
     }
 
 
@@ -455,58 +483,52 @@ public class Projection {
         return status;
     }
 
+    private int solveForExpression(IntExpr expression, boolean maximize, int seconds, String expressionName) {
+        int knownValidBound = Integer.parseInt(model.eval(expression, false).getSExpr());
+        String action = maximize ? "Maximizing" : "Minimizing";
+        sendFeedbackOrLog("%s the number of %s!", action, expressionName);
+        while (true) {
+            BoolExpr potentiallyBetterBound = maximize
+                    ? ctx.mkLt(ctx.mkInt(knownValidBound), expression)
+                    : ctx.mkGt(ctx.mkInt(knownValidBound), expression);
+            Status status = solveTimeout(seconds, potentiallyBetterBound);
+
+            switch (status) {
+                case UNKNOWN -> sendFeedbackOrLog("Optimizing timed out!");
+                case UNSATISFIABLE -> sendFeedbackOrLog("Optimization fully completed!");
+                case SATISFIABLE -> {
+                    knownValidBound = Integer.parseInt(model.eval(expression, false).getSExpr());
+                    sendFeedbackOrLog("Found a configuration for %d %s.", knownValidBound, expressionName);
+                    continue;
+                }
+            }
+            break; // UNKNOWN and UNSATISFIABLE reach this
+        }
+        // Add the final value as a permanent condition
+        solver.add(ctx.mkEq(ctx.mkInt(knownValidBound), expression));
+        return knownValidBound;
+    }
 
     public void solve() throws TimeoutException {
-        // For the starting target for the number of harvested clusters, we use the number of naively harvestable clusters
-        // Instead of trying to beat the naive target right away, we start with exactly the number of
-        // naively harvested cluster. This guarantees we always get a model to work with.
-        int minimum_harvested_clusters = naivelyHarvestableClusters.size();
-        sendFeedbackOrLog("Without breaking buds, %d clusters can be harvested", minimum_harvested_clusters);
-        for (;; minimum_harvested_clusters++) {
-            int finalMinimum_harvested_clusters = minimum_harvested_clusters;
-            Status status = solveTimeout(20, ctx.mkLe(ctx.mkInt(finalMinimum_harvested_clusters), nrOfHarvestedClusters));
+        // Ensure we get an initial SAT model that 'agrees' with the naively harvestable clusters
+        Status status = solveTimeout(60, ctx.mkLe(ctx.mkInt(naivelyHarvestableClusters.size()), nrOfHarvestedClusters));
 
-            if (status == Status.UNKNOWN) {
-                sendFeedbackOrLog("Optimizing cluster yield timed out!");
-                break;
-            } else if (status == Status.UNSATISFIABLE) {
-                sendFeedbackOrLog("Fully optimized cluster yield!");
-                break;
-            }
-
-            minimum_harvested_clusters = Integer.parseInt(model.eval(nrOfHarvestedClusters, false).getSExpr());
-            sendFeedbackOrLog("nr of harvested clusters: %d", minimum_harvested_clusters);
+        switch (status) {
+            case UNKNOWN -> throw new TimeoutException("Initial projection timed out. " +
+                    "Rerun the command with a larger cluster optimization timeout, or if " +
+                    "you selected multiple geodes at once, select one geode at a time.");
+            case UNSATISFIABLE -> throw new IllegalStateException("There is a bug in the projection code!"); // Initial projection should always be possible!
         }
 
-        if (model == null) {
-            throw new TimeoutException(
-                    "Initial projection timed out. " +
-                    "Rerun the command with a larger cluster optimization timeout, " +
-                    "or if you selected multiple geodes at once, select one geode at a time.");
+        // Gradually optimize the SAT-solver results:
+        // First maximize the number of harvested clusters, then minimize the number of projections, and finally
+        // minimize the number of vertical projections
+        int best_cluster_bound = solveForExpression(nrOfHarvestedClusters, true, 20, "harvested clusters");
+        if (best_cluster_bound > naivelyHarvestableClusters.size()) {
+            sendFeedbackOrLog("By breaking buds, %d extra cluster(s) can be harvested!", best_cluster_bound - naivelyHarvestableClusters.size());
         }
-        minimum_harvested_clusters = Integer.parseInt(model.eval(nrOfHarvestedClusters, false).getSExpr());
-        sendFeedbackOrLog("By breaking budding amethysts, %d extra clusters can be harvested!",
-                minimum_harvested_clusters - naivelyHarvestableClusters.size());
-        solver.add(ctx.mkEq(ctx.mkInt(minimum_harvested_clusters), nrOfHarvestedClusters));
-
-        int maximum_projections = Integer.parseInt(model.eval(nrOfProjections, false).getSExpr()) - 1;
-        sendFeedbackOrLog("nr of projections: " + maximum_projections);
-
-        for (;;maximum_projections--) {
-            int finalMaximum_projections = maximum_projections;
-            Status status = solveTimeout(5, ctx.mkGe(ctx.mkInt(finalMaximum_projections), nrOfProjections));
-
-            if (status == Status.UNKNOWN) {
-                sendFeedbackOrLog("Minimizing the projections timed out!");
-                break;
-            } else if (status == Status.UNSATISFIABLE) {
-                sendFeedbackOrLog("Fully minimized the number of projections!");
-                break;
-            }
-
-            maximum_projections = Integer.parseInt(model.eval(nrOfProjections, false).getSExpr());
-            sendFeedbackOrLog("nr of projections: %d", maximum_projections);
-        }
+        solveForExpression(nrOfProjections, false, 5, "projections");
+        solveForExpression(nrOfVerticalProjections, false, 5, "vertical projections");
     }
 
     public void postProcess() {
