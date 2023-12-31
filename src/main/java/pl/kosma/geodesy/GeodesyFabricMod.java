@@ -180,12 +180,24 @@ public class GeodesyFabricMod implements ModInitializer {
                                 GeodesyCore.executeForPlayer(context.getSource().getPlayer(),
                                         core -> core.geodesyBuildProjection(Set.of(Direction.EAST, Direction.SOUTH, Direction.UP)));
                                 return SINGLE_SUCCESS;
-                            }
-                            catch (Exception e) {
+                            } catch (Exception e) {
                                 LOGGER.error("sat_project", e);
                                 throw e;
                             }
                         }))
+                    .then(literal("cluster")
+                            //
+                        .executes(context -> {
+                            try {
+                                GeodesyCore.executeForPlayer(context.getSource().getPlayer(),
+                                        core -> core.geodesyCluster());
+                                return SINGLE_SUCCESS;
+                            } catch (Exception e) {
+                                LOGGER.error("cluster", e);
+                                throw e;
+                            }
+                        })
+                    )
                     .then(literal("project")
                         .then(argument("direction1", DirectionArgumentType.direction())
                             .then(argument("direction2", DirectionArgumentType.direction())

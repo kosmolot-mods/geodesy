@@ -23,6 +23,7 @@ import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.kosma.geodesy.clustering.Clustering;
 import pl.kosma.geodesy.projection.Projection;
 
 import java.lang.ref.WeakReference;
@@ -155,6 +156,13 @@ public class GeodesyCore {
 
     void geodesyBuildProjection(Collection<Direction> directions) {
         projection.applyModelToWorld(directions);
+    }
+
+    void geodesyCluster() {
+        var planePosBoolMap = projection.exportPlanePosBoolMap();
+        var clusters = Clustering.clusters(planePosBoolMap);
+        clusters.values().forEach(Clustering::printUnclustered);
+
     }
 
     void geodesyProject(Direction[] directions) {

@@ -623,6 +623,16 @@ public class Projection {
             }));
     }
 
+    public Map<GeodesyPlanePos, Boolean> exportPlanePosBoolMap() {
+        return planePosBoolMap.entrySet().stream().collect(Collectors.toMap(
+                Map.Entry::getKey,
+                entry -> switch (model.eval(entry.getValue(), false).getBoolValue()) {
+                    case Z3_L_TRUE -> true;
+                    case Z3_L_FALSE -> false;
+                    case Z3_L_UNDEF -> throw new IllegalStateException("Preprocess step was not called!");
+                }));
+    }
+
     private void sendFeedbackOrLog(String message, Object... args) {
         String processedMessage = String.format(message, args);
         if (core == null) {

@@ -27,6 +27,8 @@ dependencies {
 
     include 'tools.aqua:z3-turnkey:4.11.2'
     implementation 'tools.aqua:z3-turnkey:4.11.2'
+
+    implementation group: 'org.fusesource.jansi', name: 'jansi', version: '2.4.1'
 }
 
 processResources {
