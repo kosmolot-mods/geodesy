@@ -6,9 +6,9 @@ import net.minecraft.block.entity.CommandBlockBlockEntity;
 import net.minecraft.block.entity.DropperBlockEntity;
 import net.minecraft.block.entity.HopperBlockEntity;
 import net.minecraft.block.entity.StructureBlockBlockEntity;
+import net.minecraft.block.enums.BlockFace;
 import net.minecraft.block.enums.BlockHalf;
 import net.minecraft.block.enums.StructureBlockMode;
-import net.minecraft.block.enums.WallMountLocation;
 import net.minecraft.block.enums.WireConnection;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -130,8 +130,8 @@ public class GeodesyCore {
             if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AMETHYST_CLUSTER) {
                 clustersLeft.getAndIncrement();
                 world.setBlockState(blockPosDirectionPair.getLeft(), switch (blockPosDirectionPair.getRight()) {
-                    case DOWN -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.CEILING);
-                    case UP -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.WALL_MOUNT_LOCATION, WallMountLocation.FLOOR);
+                    case DOWN -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.BLOCK_FACE, BlockFace.CEILING);
+                    case UP -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.BLOCK_FACE, BlockFace.FLOOR);
                     default -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.HORIZONTAL_FACING, blockPosDirectionPair.getRight());
                 }, NOTIFY_LISTENERS);
             }
