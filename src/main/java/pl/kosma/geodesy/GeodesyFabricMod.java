@@ -39,7 +39,7 @@ public class GeodesyFabricMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        ArgumentTypeRegistry.registerArgumentType(new Identifier("geodesy", "direction"), DirectionArgumentType.class, ConstantArgumentSerializer.of(DirectionArgumentType::direction));
+        ArgumentTypeRegistry.registerArgumentType(Identifier.of("geodesy", "direction"), DirectionArgumentType.class, ConstantArgumentSerializer.of(DirectionArgumentType::direction));
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(literal("geodesy")
                     .requires(source -> source.hasPermissionLevel(2))
