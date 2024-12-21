@@ -1,7 +1,7 @@
 plugins {
     id 'fabric-loom' version '1.8-SNAPSHOT'
-    id "com.modrinth.minotaur" version "2.+"
     id 'maven-publish'
+    id "me.modmuss50.mod-publish-plugin" version "0.8.4"
 }
 
 version = project.mod_version
@@ -83,12 +83,29 @@ publishing {
     }
 }
 
-modrinth {
-    projectId = project.name
-    uploadFile = remapJar
-    gameVersions = [project.minecraft_version]
-    syncBodyFrom = rootProject.file("README.md").text
-    dependencies {
-        required.version "fabric-api", project.fabric_version
+publishMods {
+    file = remapJar.archiveFile
+    displayName = "Geodesy ${mod_version}"
+    changelog = ""
+    type = STABLE
+    modLoaders.add("fabric")
+
+    modrinth {
+        projectId = "WlRZd7tK"
+        accessToken = providers.environmentVariable("MODRINTH_TOKEN")
+        projectDescription = rootProject.file("README.md").text
+        minecraftVersionRange {
+            start = "1.21"
+            end = "1.21.1"
+        }
+        requires {
+            id = "P7dR8mSH"
+            version = project.fabric_version
+        }
+    }
+    github {
+        repository = "kosmolot-mods/geodesy"
+        accessToken = providers.environmentVariable("GITHUB_TOKEN")
+        commitish = "main"
     }
 }
