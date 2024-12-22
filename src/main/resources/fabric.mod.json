@@ -20,6 +20,9 @@
   "entrypoints": {
     "main": [
       "pl.kosma.geodesy.GeodesyFabricMod"
+    ],
+    "fabric-gametest": [
+      "pl.kosma.geodesy.GeodesyTest"
     ]
   },
   "depends": {

@@ -1,0 +1,12 @@
+{
+    DataVersion: 2730,
+    size: [37, 37, 37],
+    data: [
+        {pos: [18, 18, 18], state: "minecraft:budding_amethyst"}
+    ],
+    entities: [],
+    palette: [
+        "minecraft:air",
+        "minecraft:budding_amethyst"
+    ]
+}
