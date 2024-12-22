@@ -12,6 +12,7 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,8 +28,8 @@ public class GeodesyFabricMod implements ModInitializer {
 
     static private final Map<UUID, GeodesyCore> perPlayerCore = new HashMap<>();
 
-    private GeodesyCore getPerPlayerCore(ServerPlayerEntity player) {
-        UUID uuid = player.getUuid();
+    private GeodesyCore getPerPlayerCore(@Nullable ServerPlayerEntity player) {
+        UUID uuid = player != null ? player.getUuid() : null;
         if (!perPlayerCore.containsKey(uuid)) {
             perPlayerCore.put(uuid, new GeodesyCore());
         }
@@ -104,7 +105,7 @@ public class GeodesyFabricMod implements ModInitializer {
                                             .executes(context -> {
                                                 try {
                                                     GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                                    ServerWorld world = context.getSource().getPlayer().getServerWorld();
+                                                    ServerWorld world = context.getSource().getWorld();
                                                     BlockPos startPos = BlockPosArgumentType.getValidBlockPos(context, "start");
                                                     BlockPos endPos = BlockPosArgumentType.getValidBlockPos(context, "end");
                                                     context.getSource().getServer().execute(() -> core.geodesyArea(world, startPos, endPos));
@@ -118,7 +119,7 @@ public class GeodesyFabricMod implements ModInitializer {
                     .then(literal("analyze").executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            context.getSource().getServer().execute(() -> core.geodesyAnalyze());
+                            context.getSource().getServer().execute(core::geodesyAnalyze);
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
@@ -143,7 +144,7 @@ public class GeodesyFabricMod implements ModInitializer {
                     .then(literal("assemble").executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            context.getSource().getServer().execute(() -> core.geodesyAssemble());
+                            context.getSource().getServer().execute(core::geodesyAssemble);
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {
@@ -154,7 +155,7 @@ public class GeodesyFabricMod implements ModInitializer {
                     .executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            context.getSource().getServer().execute(() -> core.geodesyGeodesy());
+                            context.getSource().getServer().execute(core::geodesyGeodesy);
                             return SINGLE_SUCCESS;
                         }
                         catch (Exception e) {

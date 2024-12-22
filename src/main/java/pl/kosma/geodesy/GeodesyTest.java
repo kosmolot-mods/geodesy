@@ -2,23 +2,19 @@ package pl.kosma.geodesy;
 
 import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
 import net.minecraft.block.Blocks;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
 import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
 import net.minecraft.util.math.BlockPos;
 
 public class GeodesyTest implements FabricGameTest {
-    @SuppressWarnings("removal")
     @GameTest(tickLimit = 500)
     public void test(TestContext context) {
-        ServerWorld world = context.getWorld();
-        CommandManager commandManager = world.getServer().getCommandManager();
-        ServerPlayerEntity player = context.createMockCreativeServerPlayerInWorld();
-        world.getServer().getPlayerManager().addToOperators(player.getGameProfile());
-        ServerCommandSource commandSource = player.getCommandSource();
+        MinecraftServer server = context.getWorld().getServer();
+        CommandManager commandManager = server.getCommandManager();
+        ServerCommandSource commandSource = server.getCommandSource();
 
         BlockPos absolutePos = context.getAbsolutePos(new BlockPos(18, 18, 18));
         commandManager.executeWithPrefix(commandSource, "/geodesy area " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ() + " " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ());
