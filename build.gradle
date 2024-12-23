@@ -108,7 +108,7 @@ publishMods {
         projectDescription = rootProject.file("README.md").text
         minecraftVersionRange {
             start = "1.21.2"
-            end = "1.21.3"
+            end = "1.21.4"
         }
         requires {
             id = "P7dR8mSH"
