@@ -1,16 +1,15 @@
 package pl.kosma.geodesy;
 
-import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
+import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.block.Blocks;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.test.GameTest;
 import net.minecraft.test.TestContext;
 import net.minecraft.util.math.BlockPos;
 
-public class GeodesyTest implements FabricGameTest {
-    @GameTest(tickLimit = 500)
+public class GeodesyTest {
+    @GameTest(structure = "geodesy:geodesytest.test", maxTicks = 500)
     public void test(TestContext context) {
         MinecraftServer server = context.getWorld().getServer();
         CommandManager commandManager = server.getCommandManager();
