@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.11-SNAPSHOT'
+    id 'fabric-loom' version '1.14-SNAPSHOT'
     id 'maven-publish'
     id "me.modmuss50.mod-publish-plugin" version "0.8.4"
 }
@@ -101,8 +101,8 @@ publishMods {
         accessToken = providers.environmentVariable("MODRINTH_TOKEN")
         projectDescription = rootProject.file("README.md").text
         minecraftVersionRange {
-            start = "1.21.5"
-            end = "1.21.10"
+            start = "1.21.11"
+            end = "1.21.11"
         }
         requires {
             id = "P7dR8mSH"

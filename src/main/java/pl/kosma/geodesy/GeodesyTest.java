@@ -16,9 +16,9 @@ public class GeodesyTest {
         ServerCommandSource commandSource = server.getCommandSource();
 
         BlockPos absolutePos = context.getAbsolutePos(new BlockPos(18, 18, 18));
-        commandManager.executeWithPrefix(commandSource, "/geodesy area " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ() + " " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ());
-        commandManager.executeWithPrefix(commandSource, "/geodesy analyze");
-        commandManager.executeWithPrefix(commandSource, "/geodesy project north east down");
+        commandManager.parseAndExecute(commandSource, "/geodesy area " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ() + " " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ());
+        commandManager.parseAndExecute(commandSource, "/geodesy analyze");
+        commandManager.parseAndExecute(commandSource, "/geodesy project north east down");
 
         new IterableBlockBox(17, 17, 14, 19, 19, 14).forEachEdgePosition(pos -> context.setBlockState(pos, Blocks.SLIME_BLOCK));
         context.setBlockState(19, 17, 13, Blocks.ZOMBIE_WALL_HEAD);
@@ -32,7 +32,7 @@ public class GeodesyTest {
         context.setBlockState(23, 19, 19, Blocks.ZOMBIE_WALL_HEAD);
         context.setBlockState(23, 17, 18, Blocks.WITHER_SKELETON_WALL_SKULL);
 
-        commandManager.executeWithPrefix(commandSource, "/geodesy assemble");
+        commandManager.parseAndExecute(commandSource, "/geodesy assemble");
         context.putAndRemoveRedstoneBlock(new BlockPos(19, 17, 2), 1);
         context.waitAndRun(150, () -> context.putAndRemoveRedstoneBlock(new BlockPos(34, 17, 19), 1));
         context.waitAndRun(300, () -> {
