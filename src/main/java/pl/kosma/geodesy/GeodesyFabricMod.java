@@ -4,6 +4,8 @@ import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.serialize.ConstantArgumentSerializer;
 import net.minecraft.server.command.CommandManager;
@@ -14,6 +16,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
+import pl.kosma.geodesy.solver.SolverConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -153,6 +156,52 @@ public class GeodesyFabricMod implements ModInitializer {
                             throw (e);
                         }
                     }))
+                    .then(literal("solve")
+                        .then(argument("timeout", IntegerArgumentType.integer(1, 300))
+                            .then(argument("cost", DoubleArgumentType.doubleArg(1.0, 12.0))
+                                .executes(context -> {
+                                    try {
+                                        GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                                        int timeout = IntegerArgumentType.getInteger(context, "timeout");
+                                        double cost = DoubleArgumentType.getDouble(context, "cost");
+                                        SolverConfig config = SolverConfig.builder()
+                                                .timeoutMs(timeout * 1000L)
+                                                .costThreshold(cost)
+                                                .build();
+                                        context.getSource().getServer().execute(() -> core.geodesySolve(config));
+                                        return SINGLE_SUCCESS;
+                                    }
+                                    catch (Exception e) {
+                                        LOGGER.error("solve", e);
+                                        throw (e);
+                                    }
+                                }))
+                            .executes(context -> {
+                                try {
+                                    GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                                    int timeout = IntegerArgumentType.getInteger(context, "timeout");
+                                    SolverConfig config = SolverConfig.builder()
+                                            .timeoutMs(timeout * 1000L)
+                                            .build();
+                                    context.getSource().getServer().execute(() -> core.geodesySolve(config));
+                                    return SINGLE_SUCCESS;
+                                }
+                                catch (Exception e) {
+                                    LOGGER.error("solve", e);
+                                    throw (e);
+                                }
+                            }))
+                        .executes(context -> {
+                            try {
+                                GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                                context.getSource().getServer().execute(core::geodesySolve);
+                                return SINGLE_SUCCESS;
+                            }
+                            catch (Exception e) {
+                                LOGGER.error("solve", e);
+                                throw (e);
+                            }
+                        }))
                     .executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
