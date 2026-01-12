@@ -83,31 +83,65 @@ Here I run `/geodesy project east south up`:
 
 ![Projection done.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode4.png)
 
-### Step 5: Sticky blocks
+### Step 5: Solve (Optional)
 
-Place the slime and honey blocks outside the structure, as shown by ilmango in the video.
-All pumpkin blocks should be covered; no crying obsidian blocks should be covered. If you
-can't cover all pumpkin blocks, the efficiency of the farm will be slightly reduced.
+Run `/geodesy solve` to automatically calculate optimal placement of slime and honey
+blocks, as well as the mob head markers for flying machines. This step is optional -
+you can still place them manually as described in Steps 6 and 7.
+
+The solver uses a backtracking algorithm to find "islands" (connected groups of sticky
+blocks) that maximize coverage of pumpkin blocks while respecting constraints:
+
+* Each island must be 4-12 blocks in size
+* Each island must contain an L-shape (required for flying machine mechanics)
+* Adjacent islands use alternating materials (slime vs honey) to prevent sticking
+* Islands cannot overlap or cover crying obsidian (blocked) cells
+
+The command accepts optional parameters:
+
+* `/geodesy solve` - Use default settings (5 second timeout, cost of 1.0)
+* `/geodesy solve (timeout)` - Set timeout in seconds (1-300)
+* `/geodesy solve (timeout) (cost)` - Set timeout and cost threshold (1.0-12.0)
+
+The **cost** parameter controls the tradeoff between coverage and number of flying machines:
+
+* Lower cost (e.g. 1.0): More islands/machines, higher harvest coverage
+* Higher cost (e.g. 4.0): Fewer islands/machines, may sacrifice some coverage
+
+The solver scores solutions as: `harvest_cells_covered - (island_count × cost)`
+
+After solving, slime/honey blocks are placed one layer outside the wall, and mob head
+markers (3 zombie heads + 1 wither skeleton skull in an L-shape) are placed for each island.
+
+You can re-run `/geodesy solve` with different parameters - the previous solution will
+be cleared automatically.
+
+### Step 6: Sticky blocks (Manual Alternative)
+
+If you prefer manual placement or want to adjust the solver's output, place slime and
+honey blocks outside the structure, as shown by ilmango in the video. All pumpkin blocks
+should be covered; no crying obsidian blocks should be covered. If you can't cover all
+pumpkin blocks, the efficiency of the farm will be slightly reduced.
 
 ![Sticky block structures placed.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode5.png)
 
-### Step 6: Marker blocks
+### Step 7: Marker blocks (Manual Alternative)
 
-Using the supplied mob heads, place markers to indicate where the flying machines
-should go. Black mob head markes a blocker obsidian block, three green mob heads
-indicate a flying machine.
+If you skipped the solve step or want to adjust markers, use mob heads to indicate where
+the flying machines should go. Black mob head (wither skeleton skull) marks a blocker
+obsidian block, three green mob heads (zombie heads) indicate a flying machine.
 
 ![Flying machine markers placed.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode6.png)
 
-### Step 7: Assemble
+### Step 8: Assemble
 
 Run `/geodesy assemble` to "push" the sticky block structures inside the obsidian frame
-and generate flying machines at locations that you marked. The redstone clock is also 
+and generate flying machines at locations that you marked. The redstone clock is also
 generated for your convenience - just connect it.
 
 ![Assembled farm structure.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode7.png)
 
-### Step 8: Wiring
+### Step 9: Wiring
 
 The rest is up to you! Add trigger wiring and collection system. When adding repeaters to the trigger
 wiring, make sure to set them to maximum delay.  Again, watch ilmango's video for more information.
