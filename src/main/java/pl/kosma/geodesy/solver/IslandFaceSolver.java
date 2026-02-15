@@ -1,5 +1,9 @@
 package pl.kosma.geodesy.solver;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +31,7 @@ public class IslandFaceSolver implements FaceSolver {
     private static final int MAX_SHAPES_PER_TARGET = 1000;
 
     // Grid state
-    private int[][] grid;
+    private byte[][] grid;
     private int rows;
     private int cols;
     private int totalCells;
@@ -37,10 +41,10 @@ public class IslandFaceSolver implements FaceSolver {
 
     // Target tracking
     private List<int[]> targets;  // List of [row, col] for all 1s
-    private Map<Long, Integer> targetIndices;  // Map cell key -> index in targets
+    private Long2IntOpenHashMap targetIndices;  // Map cell key -> index in targets
 
     // Precomputed shapes: Map target_index -> list of Shape
-    private Map<Integer, List<Shape>> possibleShapes;
+    private Int2ObjectOpenHashMap<List<Shape>> possibleShapes;
 
     // Sorted target indices (by scarcity - fewest shapes first)
     private int[] sortedTargetIndices;
@@ -54,9 +58,9 @@ public class IslandFaceSolver implements FaceSolver {
     private static class Shape {
         final BitSet mask;
         final int onesCovered;
-        final Set<Long> cells;
+        final LongOpenHashSet cells;
 
-        Shape(BitSet mask, int onesCovered, Set<Long> cells) {
+        Shape(BitSet mask, int onesCovered, LongOpenHashSet cells) {
             this.mask = mask;
             this.onesCovered = onesCovered;
             this.cells = cells;
@@ -64,11 +68,11 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     private static class Island {
-        final Set<Long> cells;
-        final Set<Long> lShapeCells;  // The 4 cells forming the L-shape
+        final LongOpenHashSet cells;
+        final LongOpenHashSet lShapeCells;  // The 4 cells forming the L-shape
         final int material;  // 0 = slime, 1 = honey
 
-        Island(Set<Long> cells, Set<Long> lShapeCells, int material) {
+        Island(LongOpenHashSet cells, LongOpenHashSet lShapeCells, int material) {
             this.cells = cells;
             this.lShapeCells = lShapeCells;
             this.material = material;
@@ -81,11 +85,11 @@ public class IslandFaceSolver implements FaceSolver {
         timeoutMs = config.getTimeoutMs();
         islandCost = config.getCostThreshold();
 
-        // Convert FaceGrid to internal grid format
+        // Convert FaceGrid to internal grid format (row-major, matching FaceGrid's storage)
         rows = input.getHeight();
         cols = input.getWidth();
         totalCells = rows * cols;
-        grid = new int[rows][cols];
+        grid = new byte[rows][cols];
 
         for (int y = 0; y < rows; y++) {
             for (int x = 0; x < cols; x++) {
@@ -95,8 +99,9 @@ public class IslandFaceSolver implements FaceSolver {
 
         // Initialize state
         targets = new ArrayList<>();
-        targetIndices = new HashMap<>();
-        possibleShapes = new HashMap<>();
+        targetIndices = new Long2IntOpenHashMap();
+        targetIndices.defaultReturnValue(-1);
+        possibleShapes = new Int2ObjectOpenHashMap<>();
         bestSolution = new ArrayList<>();
         maxScore = Double.NEGATIVE_INFINITY;
 
@@ -142,7 +147,7 @@ public class IslandFaceSolver implements FaceSolver {
         return row * cols + col;
     }
 
-    private BitSet getShapeMask(Set<Long> cells) {
+    private BitSet getShapeMask(LongOpenHashSet cells) {
         BitSet mask = new BitSet(totalCells);
         for (long key : cells) {
             int bit = cellBit(keyRow(key), keyCol(key));
@@ -152,7 +157,7 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     // An L-shape requires at least one cell to have neighbors in perpendicular directions.
-    private boolean hasLShape(Set<Long> cells) {
+    private boolean hasLShape(LongOpenHashSet cells) {
         for (long key : cells) {
             int r = keyRow(key);
             int c = keyCol(key);
@@ -191,7 +196,7 @@ public class IslandFaceSolver implements FaceSolver {
     private void precomputeShapes() {
         LOGGER.debug("Pre-computing shapes...");
 
-        Set<Set<Long>> seenShapesGlobal = new HashSet<>();
+        ObjectOpenHashSet<LongOpenHashSet> seenShapesGlobal = new ObjectOpenHashSet<>();
 
         for (int tIdx = 0; tIdx < targets.size(); tIdx++) {
             possibleShapes.put(tIdx, new ArrayList<>());
@@ -200,10 +205,11 @@ public class IslandFaceSolver implements FaceSolver {
             long startKey = cellKey(start[0], start[1]);
 
             // BFS to find shapes starting from this target
-            Queue<Set<Long>> queue = new LinkedList<>();
-            Set<Set<Long>> seenLocal = new HashSet<>();
+            // Use ArrayDeque as a deque: harvest neighbors go to front, air to back
+            ArrayDeque<LongOpenHashSet> queue = new ArrayDeque<>();
+            ObjectOpenHashSet<LongOpenHashSet> seenLocal = new ObjectOpenHashSet<>();
 
-            Set<Long> initial = new HashSet<>();
+            LongOpenHashSet initial = new LongOpenHashSet();
             initial.add(startKey);
             queue.add(initial);
             seenLocal.add(initial);
@@ -211,10 +217,10 @@ public class IslandFaceSolver implements FaceSolver {
             int shapesFound = 0;
 
             while (!queue.isEmpty() && shapesFound < MAX_SHAPES_PER_TARGET) {
-                Set<Long> current = queue.poll();
+                LongOpenHashSet current = queue.poll();
 
                 if (current.size() < MAX_ISLAND_SIZE) {
-                    Set<Long> neighbors = new HashSet<>();
+                    LongOpenHashSet neighbors = new LongOpenHashSet();
 
                     for (long key : current) {
                         int r = keyRow(key);
@@ -235,12 +241,20 @@ public class IslandFaceSolver implements FaceSolver {
                     }
 
                     for (long n : neighbors) {
-                        Set<Long> newShape = new HashSet<>(current);
+                        LongOpenHashSet newShape = new LongOpenHashSet(current);
                         newShape.add(n);
 
                         if (!seenLocal.contains(newShape)) {
                             seenLocal.add(newShape);
-                            queue.add(newShape);
+
+                            // Prioritize harvest-cell neighbors: add to front of queue
+                            int nr = keyRow(n);
+                            int nc = keyCol(n);
+                            if (grid[nr][nc] == FaceGrid.CELL_HARVEST) {
+                                queue.addFirst(newShape);
+                            } else {
+                                queue.addLast(newShape);
+                            }
 
                             if (newShape.size() >= MIN_ISLAND_SIZE && hasLShape(newShape)) {
                                 if (!seenShapesGlobal.contains(newShape)) {
@@ -256,12 +270,12 @@ public class IslandFaceSolver implements FaceSolver {
                                         }
                                     }
 
-                                    Shape shape = new Shape(mask, ones, new HashSet<>(newShape));
+                                    Shape shape = new Shape(mask, ones, new LongOpenHashSet(newShape));
 
                                     // Assign shape to every target it covers
                                     for (long key : newShape) {
-                                        Integer ti = targetIndices.get(key);
-                                        if (ti != null) {
+                                        int ti = targetIndices.get(key);
+                                        if (ti != -1) {
                                             possibleShapes.computeIfAbsent(ti, k -> new ArrayList<>()).add(shape);
                                         }
                                     }
@@ -303,8 +317,8 @@ public class IslandFaceSolver implements FaceSolver {
                 bestSolution = new ArrayList<>();
                 for (Island island : currentIslands) {
                     bestSolution.add(new Island(
-                            new HashSet<>(island.cells),
-                            new HashSet<>(island.lShapeCells),
+                            new LongOpenHashSet(island.cells),
+                            new LongOpenHashSet(island.lShapeCells),
                             island.material));
                 }
             }
@@ -341,56 +355,59 @@ public class IslandFaceSolver implements FaceSolver {
         shapes.sort((a, b) -> Integer.compare(b.onesCovered, a.onesCovered));
 
         for (Shape shape : shapes) {
-            if (!occupiedMask.intersects(shape.mask)) {
-                Set<Long> newLShape = findLShapeCells(shape.cells);
-                if (newLShape == null) continue;
+            if (occupiedMask.intersects(shape.mask)) continue;
 
-                Set<Integer> adjColors = new HashSet<>();
-                boolean possible = true;
+            LongOpenHashSet newLShape = findLShapeCells(shape.cells);
+            if (newLShape == null) continue;
 
-                for (Island existing : currentIslands) {
-                    // L-shapes of different islands cannot be adjacent
-                    if (isAdjacent(newLShape, existing.lShapeCells)) {
+            Set<Integer> adjColors = new HashSet<>();
+            boolean possible = true;
+
+            for (Island existing : currentIslands) {
+                // L-shapes contain the flying machine mechanism (pistons + slime/honey).
+                // Even though adjacent islands use different materials, adjacent L-shapes
+                // would cause mechanical interference during piston extension — the
+                // flying machines would push/pull each other's components.
+                if (isAdjacent(newLShape, existing.lShapeCells)) {
+                    possible = false;
+                    break;
+                }
+
+                // Adjacent islands must have different colors
+                if (isAdjacent(shape.cells, existing.cells)) {
+                    adjColors.add(existing.material);
+                    if (adjColors.size() >= 2) {
                         possible = false;
                         break;
                     }
-
-                    // Adjacent islands must have different colors
-                    if (isAdjacent(shape.cells, existing.cells)) {
-                        adjColors.add(existing.material);
-                        if (adjColors.size() >= 2) {
-                            possible = false;
-                            break;
-                        }
-                    }
-                }
-
-                if (possible) {
-                    int color = adjColors.contains(0) ? 1 : 0;
-
-                    currentIslands.add(new Island(shape.cells, newLShape, color));
-
-                    BitSet newOccupied = (BitSet) occupiedMask.clone();
-                    newOccupied.or(shape.mask);
-
-                    backtrack(
-                            sortedIdx + 1,
-                            newOccupied,
-                            currentIslands,
-                            currentOnes + shape.onesCovered,
-                            currentIslandsCount + 1
-                    );
-
-                    currentIslands.remove(currentIslands.size() - 1);
                 }
             }
+
+            if (!possible) continue;
+
+            int color = adjColors.contains(0) ? 1 : 0;
+
+            currentIslands.add(new Island(shape.cells, newLShape, color));
+
+            BitSet newOccupied = (BitSet) occupiedMask.clone();
+            newOccupied.or(shape.mask);
+
+            backtrack(
+                    sortedIdx + 1,
+                    newOccupied,
+                    currentIslands,
+                    currentOnes + shape.onesCovered,
+                    currentIslandsCount + 1
+            );
+
+            currentIslands.remove(currentIslands.size() - 1);
         }
 
         // Option: skip this target
         backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, currentIslandsCount);
     }
 
-    private boolean isAdjacent(Set<Long> cells1, Set<Long> cells2) {
+    private boolean isAdjacent(LongOpenHashSet cells1, LongOpenHashSet cells2) {
         for (long key : cells1) {
             int r = keyRow(key);
             int c = keyCol(key);
@@ -404,7 +421,7 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     // Finds the L-shape cells (4 cells: 3 in a row + 1 perpendicular).
-    private Set<Long> findLShapeCells(Set<Long> cells) {
+    private LongOpenHashSet findLShapeCells(LongOpenHashSet cells) {
         for (long key : cells) {
             int x = keyRow(key);
             int y = keyCol(key);
@@ -429,7 +446,7 @@ public class IslandFaceSolver implements FaceSolver {
                         long cornerKey = cellKey(cornerX, cornerY);
 
                         if (cells.contains(cornerKey)) {
-                            Set<Long> lShape = new HashSet<>();
+                            LongOpenHashSet lShape = new LongOpenHashSet();
                             lShape.add(prevKey);
                             lShape.add(key);
                             lShape.add(nextKey);
@@ -443,7 +460,7 @@ public class IslandFaceSolver implements FaceSolver {
                         cornerKey = cellKey(cornerX, cornerY);
 
                         if (cells.contains(cornerKey)) {
-                            Set<Long> lShape = new HashSet<>();
+                            LongOpenHashSet lShape = new LongOpenHashSet();
                             lShape.add(prevKey);
                             lShape.add(key);
                             lShape.add(nextKey);
@@ -463,7 +480,7 @@ public class IslandFaceSolver implements FaceSolver {
                 .solveTimeMs(solveTime)
                 .timedOut(timedOut);
 
-        Set<Long> coveredCells = new HashSet<>();
+        LongOpenHashSet coveredCells = new LongOpenHashSet();
         for (Island island : bestSolution) {
             coveredCells.addAll(island.cells);
         }
@@ -492,11 +509,18 @@ public class IslandFaceSolver implements FaceSolver {
                 resultCells.add(new int[]{c, r});
             }
 
-            builder.addIsland(new SolverResult.Island(resultCells, type));
+            // Convert internal L-shape cells to [x, y] coordinates for SolverResult
+            Set<int[]> resultLShapeCells = new HashSet<>();
+            for (long key : island.lShapeCells) {
+                int r = keyRow(key);
+                int c = keyCol(key);
+                resultLShapeCells.add(new int[]{c, r});
+            }
+
+            builder.addIsland(new SolverResult.Island(resultCells, resultLShapeCells, type));
         }
 
-        LOGGER.info("Solution: {} islands, {} harvest covered, score={:.2f}",
-                bestSolution.size(), harvestCovered, maxScore);
+        LOGGER.info("Solution: {} islands, {} harvest covered", bestSolution.size(), harvestCovered);
 
         return builder.build();
     }

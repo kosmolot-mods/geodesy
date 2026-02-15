@@ -24,15 +24,21 @@ public class SolverResult {
      */
     public static class Island {
         private final Set<int[]> cells;  // Set of [x, y] coordinates
+        private final Set<int[]> lShapeCells;  // The 4 cells forming the L-shape (3 stem + 1 corner)
         private final PlacementType material;
 
-        public Island(Set<int[]> cells, PlacementType material) {
+        public Island(Set<int[]> cells, Set<int[]> lShapeCells, PlacementType material) {
             this.cells = cells;
+            this.lShapeCells = lShapeCells;
             this.material = material;
         }
 
         public Set<int[]> getCells() {
             return cells;
+        }
+
+        public Set<int[]> getLShapeCells() {
+            return lShapeCells;
         }
 
         public PlacementType getMaterial() {

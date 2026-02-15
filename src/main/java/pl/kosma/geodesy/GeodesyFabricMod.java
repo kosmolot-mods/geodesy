@@ -145,28 +145,17 @@ public class GeodesyFabricMod implements ModInitializer {
                                 .executes(context -> geodesyProjectCommand(context,2)))
                             .executes(context -> geodesyProjectCommand(context,1)))
                         .executes(context -> geodesyProjectCommand(context,0)))
-                    .then(literal("assemble").executes(context -> {
-                        try {
-                            GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                            context.getSource().getServer().execute(core::geodesyAssemble);
-                            return SINGLE_SUCCESS;
-                        }
-                        catch (Exception e) {
-                            LOGGER.error("assemble", e);
-                            throw (e);
-                        }
-                    }))
                     .then(literal("solve")
-                        .then(argument("timeout", IntegerArgumentType.integer(1, 300))
-                            .then(argument("cost", DoubleArgumentType.doubleArg(1.0, 12.0))
+                        .then(argument("cost", DoubleArgumentType.doubleArg(1.0, 12.0))
+                            .then(argument("timeout", IntegerArgumentType.integer(1, 300))
                                 .executes(context -> {
                                     try {
                                         GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                        int timeout = IntegerArgumentType.getInteger(context, "timeout");
                                         double cost = DoubleArgumentType.getDouble(context, "cost");
+                                        int timeout = IntegerArgumentType.getInteger(context, "timeout");
                                         SolverConfig config = SolverConfig.builder()
-                                                .timeoutMs(timeout * 1000L)
                                                 .costThreshold(cost)
+                                                .timeoutMs(timeout * 1000L)
                                                 .build();
                                         context.getSource().getServer().execute(() -> core.geodesySolve(config));
                                         return SINGLE_SUCCESS;
@@ -179,9 +168,9 @@ public class GeodesyFabricMod implements ModInitializer {
                             .executes(context -> {
                                 try {
                                     GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                    int timeout = IntegerArgumentType.getInteger(context, "timeout");
+                                    double cost = DoubleArgumentType.getDouble(context, "cost");
                                     SolverConfig config = SolverConfig.builder()
-                                            .timeoutMs(timeout * 1000L)
+                                            .costThreshold(cost)
                                             .build();
                                     context.getSource().getServer().execute(() -> core.geodesySolve(config));
                                     return SINGLE_SUCCESS;
@@ -202,6 +191,17 @@ public class GeodesyFabricMod implements ModInitializer {
                                 throw (e);
                             }
                         }))
+                    .then(literal("assemble").executes(context -> {
+                        try {
+                            GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                            context.getSource().getServer().execute(core::geodesyAssemble);
+                            return SINGLE_SUCCESS;
+                        }
+                        catch (Exception e) {
+                            LOGGER.error("assemble", e);
+                            throw (e);
+                        }
+                    }))
                     .executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());

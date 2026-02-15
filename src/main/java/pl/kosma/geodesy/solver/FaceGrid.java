@@ -7,41 +7,43 @@ import net.minecraft.util.math.Direction;
  * This is the input to the solver algorithm.
  *
  * Cell values: 0 = air, -1 = blocked (crying obsidian), 1 = harvest (pumpkin)
+ *
+ * Internal storage is row-major: cells[row][col] (i.e. cells[y][x]).
  */
 public class FaceGrid {
 
-    public static final int CELL_AIR = 0;
-    public static final int CELL_BLOCKED = -1;
-    public static final int CELL_HARVEST = 1;
+    public static final byte CELL_AIR = 0;
+    public static final byte CELL_BLOCKED = -1;
+    public static final byte CELL_HARVEST = 1;
 
     private final int width;
     private final int height;
-    private final int[][] cells;
+    private final byte[][] cells;  // row-major: cells[y][x]
     private final Direction direction;
 
     public FaceGrid(int width, int height, Direction direction) {
         this.width = width;
         this.height = height;
         this.direction = direction;
-        this.cells = new int[width][height];
+        this.cells = new byte[height][width];
     }
 
-    public FaceGrid(int[][] cells, Direction direction) {
-        this.width = cells.length;
-        this.height = cells.length > 0 ? cells[0].length : 0;
+    public FaceGrid(byte[][] cells, int width, int height, Direction direction) {
+        this.width = width;
+        this.height = height;
         this.direction = direction;
-        this.cells = new int[width][height];
-        for (int x = 0; x < width; x++) {
-            System.arraycopy(cells[x], 0, this.cells[x], 0, height);
+        this.cells = new byte[height][width];
+        for (int y = 0; y < height; y++) {
+            System.arraycopy(cells[y], 0, this.cells[y], 0, width);
         }
     }
 
-    public int getCell(int x, int y) {
-        return cells[x][y];
+    public byte getCell(int x, int y) {
+        return cells[y][x];
     }
 
-    public void setCell(int x, int y, int value) {
-        cells[x][y] = value;
+    public void setCell(int x, int y, byte value) {
+        cells[y][x] = value;
     }
 
     public int getWidth() {
@@ -56,11 +58,11 @@ public class FaceGrid {
         return direction;
     }
 
-    public int countCells(int value) {
+    public int countCells(byte value) {
         int count = 0;
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) {
-                if (cells[x][y] == value) {
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (cells[y][x] == value) {
                     count++;
                 }
             }
@@ -77,7 +79,7 @@ public class FaceGrid {
     }
 
     public FaceGrid copy() {
-        return new FaceGrid(cells, direction);
+        return new FaceGrid(cells, width, height, direction);
     }
 
     @Override
@@ -87,7 +89,7 @@ public class FaceGrid {
           .append(", direction=").append(direction).append("]\n");
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                char c = switch (cells[x][y]) {
+                char c = switch (cells[y][x]) {
                     case CELL_AIR -> '.';
                     case CELL_BLOCKED -> '#';
                     case CELL_HARVEST -> 'P';

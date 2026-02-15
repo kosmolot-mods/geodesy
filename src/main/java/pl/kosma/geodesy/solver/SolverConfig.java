@@ -54,7 +54,7 @@ public class SolverConfig {
 
         // Value is clamped to [MIN_COST_THRESHOLD, MAX_COST_THRESHOLD].
         public Builder costThreshold(double costThreshold) {
-            this.costThreshold = Math.max(MIN_COST_THRESHOLD, Math.min(MAX_COST_THRESHOLD, costThreshold));
+            this.costThreshold = Math.clamp(costThreshold, MIN_COST_THRESHOLD, MAX_COST_THRESHOLD);
             return this;
         }
 
