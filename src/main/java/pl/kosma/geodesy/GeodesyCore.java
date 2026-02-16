@@ -230,15 +230,14 @@ public class GeodesyCore {
             return;
         }
 
-        // Submit all solve tasks in parallel using Minecraft's shared worker pool
+        // Submit all solve tasks in parallel
         Map<Direction, CompletableFuture<SolverResult>> futures = new LinkedHashMap<>();
         for (Map.Entry<Direction, FaceGrid> entry : faceGrids.entrySet()) {
             Direction direction = entry.getKey();
             FaceGrid faceGrid = entry.getValue();
 
             // Create a new solver instance for each face (thread safety)
-            CompletableFuture<SolverResult> future = CompletableFuture.supplyAsync(
-                    () -> new IslandFaceSolver().solve(faceGrid, config), Util.getMainWorkerExecutor());
+            CompletableFuture<SolverResult> future = CompletableFuture.supplyAsync(() -> new IslandFaceSolver().solve(faceGrid, config));
 
             futures.put(direction, future);
         }
@@ -299,17 +298,17 @@ public class GeodesyCore {
         BlockPos.Mutable mutablePos = new BlockPos.Mutable();
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
-                BlockPos wallPos = gridToWallPos(direction, x, y);
+                setMutableToWallPos(mutablePos, direction, x, y);
 
                 // Clear sticky block layer (wall + 1)
-                mutablePos.set(wallPos).move(direction, 1);
+                mutablePos.move(direction, 1);
                 Block stickyBlock = world.getBlockState(mutablePos).getBlock();
                 if (STICKY_BLOCKS.contains(stickyBlock)) {
                     world.setBlockState(mutablePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
                 }
 
                 // Clear mob head layer (wall + 2)
-                mutablePos.set(wallPos).move(direction, 2);
+                mutablePos.move(direction, 1);
                 Block headBlock = world.getBlockState(mutablePos).getBlock();
                 if (MARKERS_BLOCKER.contains(headBlock) || MARKERS_MACHINE.contains(headBlock)) {
                     world.setBlockState(mutablePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
@@ -372,29 +371,29 @@ public class GeodesyCore {
     }
 
     // Converts grid coordinates to world wall position.
-    private BlockPos gridToWallPos(Direction direction, int gridX, int gridY) {
+    private BlockPos.Mutable gridToWallPos(Direction direction, int gridX, int gridY) {
         return switch (direction) {
-            case EAST -> new BlockPos(
+            case EAST -> new BlockPos.Mutable(
                     geode.getMaxX() + WALL_OFFSET,
                     geode.getMinY() + gridY,
                     geode.getMinZ() + gridX);
-            case WEST -> new BlockPos(
+            case WEST -> new BlockPos.Mutable(
                     geode.getMinX() - WALL_OFFSET,
                     geode.getMinY() + gridY,
                     geode.getMinZ() + gridX);
-            case UP -> new BlockPos(
+            case UP -> new BlockPos.Mutable(
                     geode.getMinX() + gridX,
                     geode.getMaxY() + WALL_OFFSET,
                     geode.getMinZ() + gridY);
-            case DOWN -> new BlockPos(
+            case DOWN -> new BlockPos.Mutable(
                     geode.getMinX() + gridX,
                     geode.getMinY() - WALL_OFFSET,
                     geode.getMinZ() + gridY);
-            case SOUTH -> new BlockPos(
+            case SOUTH -> new BlockPos.Mutable(
                     geode.getMinX() + gridX,
                     geode.getMinY() + gridY,
                     geode.getMaxZ() + WALL_OFFSET);
-            case NORTH -> new BlockPos(
+            case NORTH -> new BlockPos.Mutable(
                     geode.getMinX() + gridX,
                     geode.getMinY() + gridY,
                     geode.getMinZ() - WALL_OFFSET);
@@ -416,6 +415,7 @@ public class GeodesyCore {
     // Applies solver result: places slime/honey blocks and mob heads.
     private void applySolverResult(Direction direction, SolverResult result) {
         // Place sticky blocks for each cell
+        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
         for (int x = 0; x < result.getWidth(); x++) {
             for (int y = 0; y < result.getHeight(); y++) {
                 SolverResult.PlacementType placement = result.getPlacement(x, y);
@@ -424,8 +424,8 @@ public class GeodesyCore {
                 }
 
                 // Calculate the position one block outside the wall (where sticky blocks go).
-                BlockPos wallPos = gridToWallPos(direction, x, y);
-                BlockPos placementPos = wallPos.offset(direction, 1);
+                setMutableToWallPos(mutablePos, direction, x, y);
+                mutablePos.move(direction, 1);
 
                 Block blockToPlace = switch (placement) {
                     case SLIME -> Blocks.SLIME_BLOCK;
@@ -434,7 +434,7 @@ public class GeodesyCore {
                 };
 
                 if (blockToPlace != null) {
-                    world.setBlockState(placementPos, blockToPlace.getDefaultState(), NOTIFY_LISTENERS);
+                    world.setBlockState(mutablePos, blockToPlace.getDefaultState(), NOTIFY_LISTENERS);
                 }
             }
         }
@@ -478,7 +478,7 @@ public class GeodesyCore {
 
         // Place zombie heads on stem cells, wither skeleton skull on corner
         for (int i = 0; i < 4; i++) {
-            BlockPos headPos = gridToWallPos(direction, cellArray[i][0], cellArray[i][1]).offset(direction, 2);
+            BlockPos headPos = gridToWallPos(direction, cellArray[i][0], cellArray[i][1]).move(direction, 2);
             if (i == cornerIdx) {
                 placeSkull(headPos, Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, direction);
             } else {

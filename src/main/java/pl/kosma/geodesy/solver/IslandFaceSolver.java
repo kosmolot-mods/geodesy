@@ -206,18 +206,19 @@ public class IslandFaceSolver implements FaceSolver {
 
             // BFS to find shapes starting from this target
             // Use ArrayDeque as a deque: harvest neighbors go to front, air to back
-            ArrayDeque<LongOpenHashSet> queue = new ArrayDeque<>();
+            ArrayDeque<LongOpenHashSet> queueHarvest = new ArrayDeque<>();
+            ArrayDeque<LongOpenHashSet> queueAir = new ArrayDeque<>();
             ObjectOpenHashSet<LongOpenHashSet> seenLocal = new ObjectOpenHashSet<>();
 
             LongOpenHashSet initial = new LongOpenHashSet();
             initial.add(startKey);
-            queue.add(initial);
+            queueHarvest.add(initial);
             seenLocal.add(initial);
 
             int shapesFound = 0;
 
-            while (!queue.isEmpty() && shapesFound < MAX_SHAPES_PER_TARGET) {
-                LongOpenHashSet current = queue.poll();
+            while ((!queueHarvest.isEmpty() || !queueAir.isEmpty()) && shapesFound < MAX_SHAPES_PER_TARGET) {
+                LongOpenHashSet current = !queueHarvest.isEmpty() ? queueHarvest.poll() : queueAir.poll();
 
                 if (current.size() < MAX_ISLAND_SIZE) {
                     LongOpenHashSet neighbors = new LongOpenHashSet();
@@ -251,9 +252,9 @@ public class IslandFaceSolver implements FaceSolver {
                             int nr = keyRow(n);
                             int nc = keyCol(n);
                             if (grid[nr][nc] == FaceGrid.CELL_HARVEST) {
-                                queue.addFirst(newShape);
+                                queueHarvest.add(newShape);
                             } else {
-                                queue.addLast(newShape);
+                                queueAir.add(newShape);
                             }
 
                             if (newShape.size() >= MIN_ISLAND_SIZE && hasLShape(newShape)) {
