@@ -17,27 +17,22 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.state.property.Properties;
 import net.minecraft.text.Text;
 import net.minecraft.util.Pair;
-import net.minecraft.util.Util;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import pl.kosma.geodesy.solver.FaceGrid;
 import pl.kosma.geodesy.solver.IslandFaceSolver;
 import pl.kosma.geodesy.solver.SolverConfig;
 import pl.kosma.geodesy.solver.SolverResult;
 
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -70,8 +65,7 @@ public class GeodesyCore {
     private List<Pair<BlockPos, Direction>> amethystClusterPositions;
 
     // The directions used in the last /geodesy project command.
-    @Nullable
-    private Direction[] lastProjectedDirections;
+    private Direction @Nullable [] lastProjectedDirections;
 
     public void geodesyGeodesy() {
         sendCommandFeedback("Welcome to Geodesy!");
@@ -231,7 +225,7 @@ public class GeodesyCore {
         }
 
         // Submit all solve tasks in parallel
-        Map<Direction, CompletableFuture<SolverResult>> futures = new LinkedHashMap<>();
+        BlockingQueue<Pair<Direction, SolverResult>> futures = new LinkedBlockingQueue<>();
         for (Map.Entry<Direction, FaceGrid> entry : faceGrids.entrySet()) {
             Direction direction = entry.getKey();
             FaceGrid faceGrid = entry.getValue();
@@ -239,15 +233,24 @@ public class GeodesyCore {
             // Create a new solver instance for each face (thread safety)
             CompletableFuture<SolverResult> future = CompletableFuture.supplyAsync(() -> new IslandFaceSolver().solve(faceGrid, config));
 
-            futures.put(direction, future);
+            future.<Void>handle((result, e) -> {
+                if (e != null) {
+                    LOGGER.error("Failed to solve face {}", direction, e);
+                    sendCommandFeedback("  %s: Failed to solve - %s", direction, e.getMessage());
+                }
+                // Always add a result whether it failed or not because the next loop expects a set number of results
+                futures.add(new Pair<>(direction, result));
+                return null;
+            });
         }
 
         // Wait for all solves to complete and apply results
         // Results are applied sequentially to ensure thread-safe world modifications
-        for (Map.Entry<Direction, CompletableFuture<SolverResult>> entry : futures.entrySet()) {
-            Direction direction = entry.getKey();
+        for (int i = 0; i < faceGrids.size(); i++) {
             try {
-                SolverResult result = entry.getValue().join();
+                Pair<Direction, SolverResult> entry = futures.take();
+                Direction direction = entry.getLeft();
+                SolverResult result = entry.getRight();
 
                 // Apply the solution to the world (must be on main thread)
                 applySolverResult(direction, result);
@@ -262,8 +265,8 @@ public class GeodesyCore {
                         result.getSolveTimeMs(),
                         result.isTimedOut() ? " (timed out)" : "");
             } catch (Exception e) {
-                LOGGER.error("Failed to solve face {}", direction, e);
-                sendCommandFeedback("  %s: Failed to solve - %s", direction, e.getMessage());
+                LOGGER.error("Error while applying solver results", e);
+                sendCommandFeedback("Error while applying solver results: %s", e.getMessage());
             }
         }
 
