@@ -5,7 +5,6 @@ import net.minecraft.util.math.Direction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Represents the result of solving a single face.
@@ -13,44 +12,11 @@ import java.util.Set;
  */
 public class SolverResult {
 
-    public enum PlacementType {
-        NONE,
-        SLIME,
-        HONEY
-    }
-
-    /**
-     * Represents an island (connected group of cells) in the solution.
-     */
-    public static class Island {
-        private final Set<int[]> cells;  // Set of [x, y] coordinates
-        private final Set<int[]> lShapeCells;  // The 4 cells forming the L-shape (3 stem + 1 corner)
-        private final PlacementType material;
-
-        public Island(Set<int[]> cells, Set<int[]> lShapeCells, PlacementType material) {
-            this.cells = cells;
-            this.lShapeCells = lShapeCells;
-            this.material = material;
-        }
-
-        public Set<int[]> getCells() {
-            return cells;
-        }
-
-        public Set<int[]> getLShapeCells() {
-            return lShapeCells;
-        }
-
-        public PlacementType getMaterial() {
-            return material;
-        }
-    }
-
     private final int width;
     private final int height;
     private final Direction direction;
-    private final PlacementType[][] placements;
-    private final List<Island> islands;
+    private final byte[][] placements;
+    private final List<IslandFaceSolver.Island> islands;
     private final int harvestCovered;
     private final int totalHarvest;
     private final long solveTimeMs;
@@ -68,7 +34,7 @@ public class SolverResult {
         this.timedOut = builder.timedOut;
     }
 
-    public PlacementType getPlacement(int x, int y) {
+    public byte getPlacement(int x, int y) {
         return placements[x][y];
     }
 
@@ -84,7 +50,7 @@ public class SolverResult {
         return direction;
     }
 
-    public List<Island> getIslands() {
+    public List<IslandFaceSolver.Island> getIslands() {
         return Collections.unmodifiableList(islands);
     }
 
@@ -113,7 +79,7 @@ public class SolverResult {
         int count = 0;
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
-                if (placements[x][y] != PlacementType.NONE) {
+                if (placements[x][y] != 0) {
                     count++;
                 }
             }
@@ -144,8 +110,8 @@ public class SolverResult {
         private final int width;
         private final int height;
         private final Direction direction;
-        private final PlacementType[][] placements;
-        private final List<Island> islands = new ArrayList<>();
+        private final byte[][] placements;
+        private final List<IslandFaceSolver.Island> islands = new ArrayList<>();
         private int harvestCovered = 0;
         private int totalHarvest = 0;
         private long solveTimeMs = 0;
@@ -155,20 +121,15 @@ public class SolverResult {
             this.width = width;
             this.height = height;
             this.direction = direction;
-            this.placements = new PlacementType[width][height];
-            for (int x = 0; x < width; x++) {
-                for (int y = 0; y < height; y++) {
-                    placements[x][y] = PlacementType.NONE;
-                }
-            }
+            this.placements = new byte[width][height];
         }
 
-        public Builder setPlacement(int x, int y, PlacementType type) {
+        public Builder setPlacement(int x, int y, byte type) {
             placements[x][y] = type;
             return this;
         }
 
-        public Builder addIsland(Island island) {
+        public Builder addIsland(IslandFaceSolver.Island island) {
             islands.add(island);
             return this;
         }

@@ -421,8 +421,8 @@ public class GeodesyCore {
         BlockPos.Mutable mutablePos = new BlockPos.Mutable();
         for (int x = 0; x < result.getWidth(); x++) {
             for (int y = 0; y < result.getHeight(); y++) {
-                SolverResult.PlacementType placement = result.getPlacement(x, y);
-                if (placement == SolverResult.PlacementType.NONE) {
+                byte placement = result.getPlacement(x, y);
+                if (placement == 0) {
                     continue;
                 }
 
@@ -431,8 +431,8 @@ public class GeodesyCore {
                 mutablePos.move(direction, 1);
 
                 Block blockToPlace = switch (placement) {
-                    case SLIME -> Blocks.SLIME_BLOCK;
-                    case HONEY -> Blocks.HONEY_BLOCK;
+                    case IslandFaceSolver.SLIME -> Blocks.SLIME_BLOCK;
+                    case IslandFaceSolver.HONEY -> Blocks.HONEY_BLOCK;
                     default -> null;
                 };
 
@@ -443,51 +443,29 @@ public class GeodesyCore {
         }
 
         // Place mob heads for each island
-        for (SolverResult.Island island : result.getIslands()) {
+        for (IslandFaceSolver.Island island : result.getIslands()) {
             placeMobHeadsForIsland(direction, island);
         }
     }
 
     // Places mob heads in L-shape pattern: 3 zombie heads + 1 wither skeleton skull.
     // Uses the pre-computed L-shape data from the solver result.
-    private void placeMobHeadsForIsland(Direction direction, SolverResult.Island island) {
-        Set<int[]> lShapeCells = island.getLShapeCells();
-        if (lShapeCells == null || lShapeCells.size() != 4) return;
-
-        // The L-shape cells are [x, y] pairs. We need to identify the stem (3 in a row)
-        // and the corner (1 perpendicular). Find the stem by looking for 3 collinear cells.
-        int[][] cellArray = lShapeCells.toArray(new int[0][]);
-
-        // Find which cell is the corner: the one not collinear with the other three.
-        // A corner cell shares neither row nor column with all other cells in a line.
-        int cornerIdx = -1;
-        for (int i = 0; i < 4; i++) {
-            // Check if removing this cell leaves 3 collinear cells
-            int[] others = new int[3];
-            int idx = 0;
-            for (int j = 0; j < 4; j++) {
-                if (j != i) others[idx++] = j;
-            }
-            // 3 cells are collinear if they share the same x or same y
-            boolean sameX = cellArray[others[0]][0] == cellArray[others[1]][0] && cellArray[others[1]][0] == cellArray[others[2]][0];
-            boolean sameY = cellArray[others[0]][1] == cellArray[others[1]][1] && cellArray[others[1]][1] == cellArray[others[2]][1];
-            if (sameX || sameY) {
-                cornerIdx = i;
-                break;
-            }
+    private void placeMobHeadsForIsland(Direction direction, IslandFaceSolver.Island island) {
+        if (island.lShape() == null || island.lShape().stemCells() == null || island.lShape().stemCells().size() != 3) {
+            LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.lShape(), island);
+            sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.lShape(), island);
+            return;
         }
-
-        if (cornerIdx == -1) return;
 
         // Place zombie heads on stem cells, wither skeleton skull on corner
-        for (int i = 0; i < 4; i++) {
-            BlockPos headPos = gridToWallPos(direction, cellArray[i][0], cellArray[i][1]).move(direction, 2);
-            if (i == cornerIdx) {
-                placeSkull(headPos, Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, direction);
-            } else {
-                placeSkull(headPos, Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, direction);
-            }
+        for (int cell : island.lShape().stemCells()) {
+            BlockPos headPos = gridToWallPos(direction, IslandFaceSolver.keyRow(cell), IslandFaceSolver.keyCol(cell)).move(direction, 2);
+            placeSkull(headPos, Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, direction);
         }
+
+        int stopperCell = island.lShape().stopperCell();
+        BlockPos stopperPos = gridToWallPos(direction, IslandFaceSolver.keyRow(stopperCell), IslandFaceSolver.keyCol(stopperCell)).move(direction, 2);
+        placeSkull(stopperPos, Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, direction);
     }
 
     // Places a skull: wall variant for horizontal faces, floor variant for up/down.

@@ -6,9 +6,9 @@ import net.minecraft.util.math.Direction;
  * Represents a 2D grid of a single face of the geode projection.
  * This is the input to the solver algorithm.
  *
- * Cell values: 0 = air, -1 = blocked (crying obsidian), 1 = harvest (pumpkin)
+ * <p>Cell values: 0 = air, -1 = blocked (crying obsidian), 1 = harvest (pumpkin)
  *
- * Internal storage is row-major: cells[row][col] (i.e. cells[y][x]).
+ * <p>Internal storage is row-major: cells[row][col] (i.e. cells[y][x]).
  */
 public class FaceGrid {
 
@@ -80,6 +80,14 @@ public class FaceGrid {
 
     public FaceGrid copy() {
         return new FaceGrid(cells, width, height, direction);
+    }
+
+    public byte[][] copyCells() {
+        byte[][] copy = new byte[height][width];
+        for (int y = 0; y < height; y++) {
+            System.arraycopy(cells[y], 0, copy[y], 0, width);
+        }
+        return copy;
     }
 
     @Override
