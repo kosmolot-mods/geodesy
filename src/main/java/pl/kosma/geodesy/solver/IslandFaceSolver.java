@@ -36,6 +36,8 @@ public class IslandFaceSolver implements FaceSolver {
     public static final byte SLIME = 1;
     public static final byte HONEY = 2;
 
+    private static final Comparator<Shape> SHAPE_PRIORITY_COMPARATOR = Comparator.comparingInt(Shape::onesCovered).reversed();
+
     // Grid state
     private byte[][] grid;
     private int rows;
@@ -145,7 +147,7 @@ public class IslandFaceSolver implements FaceSolver {
         ObjectSet<IntSet> seenShapesGlobal = new ObjectOpenHashSet<>();
 
         for (int tIdx = 0; tIdx < targets.size(); tIdx++) {
-            possibleShapes.put(tIdx, new ObjectRBTreeSet<>(Comparator.comparingInt(Shape::onesCovered)));
+            possibleShapes.put(tIdx, new ObjectRBTreeSet<>(SHAPE_PRIORITY_COMPARATOR));
 
             int start = targets.getInt(tIdx);
 
@@ -192,7 +194,7 @@ public class IslandFaceSolver implements FaceSolver {
                     for (int key : newShape) {
                         int ti = targetIndices.get(key);
                         if (ti != -1) {
-                            possibleShapes.computeIfAbsent(ti, k -> new ObjectRBTreeSet<>(Comparator.comparingInt(Shape::onesCovered))).add(shape);
+                            possibleShapes.computeIfAbsent(ti, k -> new ObjectRBTreeSet<>(SHAPE_PRIORITY_COMPARATOR)).add(shape);
                         }
                     }
 
