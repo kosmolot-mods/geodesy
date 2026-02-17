@@ -81,8 +81,8 @@ public class IslandFaceSolver implements FaceSolver {
         timeoutMs = config.getTimeoutMs();
         islandCost = config.getCostThreshold();
 
-        rows = input.getWidth();
-        cols = input.getHeight();
+        rows = input.width();
+        cols = input.height();
         totalCells = rows * cols;
         grid = input.copyCells();
 
@@ -433,7 +433,7 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     private SolverResult buildResult(FaceGrid input, long solveTime, boolean timedOut) {
-        SolverResult.Builder builder = SolverResult.builder(input.getWidth(), input.getHeight(), input.getDirection())
+        SolverResult.Builder builder = SolverResult.builder(input.width(), input.height(), input.direction())
                 .totalHarvest(input.getHarvestCount())
                 .solveTimeMs(solveTime)
                 .timedOut(timedOut);

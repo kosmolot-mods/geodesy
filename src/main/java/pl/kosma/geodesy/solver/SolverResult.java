@@ -10,69 +10,21 @@ import java.util.List;
  * Represents the result of solving a single face.
  * Contains placement instructions (NONE, SLIME, HONEY) for each cell.
  */
-public class SolverResult {
-
-    private final int width;
-    private final int height;
-    private final Direction direction;
-    private final byte[][] placements;
-    private final List<IslandFaceSolver.Island> islands;
-    private final int harvestCovered;
-    private final int totalHarvest;
-    private final long solveTimeMs;
-    private final boolean timedOut;
+public record SolverResult(int width, int height, Direction direction,
+                           byte[][] placements, List<IslandFaceSolver.Island> islands,
+                           int harvestCovered, int totalHarvest, long solveTimeMs, boolean timedOut) {
 
     private SolverResult(Builder builder) {
-        this.width = builder.width;
-        this.height = builder.height;
-        this.direction = builder.direction;
-        this.placements = builder.placements;
-        this.islands = new ArrayList<>(builder.islands);
-        this.harvestCovered = builder.harvestCovered;
-        this.totalHarvest = builder.totalHarvest;
-        this.solveTimeMs = builder.solveTimeMs;
-        this.timedOut = builder.timedOut;
+        this(builder.width, builder.height, builder.direction, builder.placements, Collections.unmodifiableList(builder.islands), builder.harvestCovered, builder.totalHarvest, builder.solveTimeMs, builder.timedOut);
     }
 
     public byte getPlacement(int x, int y) {
         return placements[x][y];
     }
 
-    public int getWidth() {
-        return width;
-    }
-
-    public int getHeight() {
-        return height;
-    }
-
-    public Direction getDirection() {
-        return direction;
-    }
-
-    public List<IslandFaceSolver.Island> getIslands() {
-        return Collections.unmodifiableList(islands);
-    }
-
-    public int getHarvestCovered() {
-        return harvestCovered;
-    }
-
-    public int getTotalHarvest() {
-        return totalHarvest;
-    }
-
     public float getCoveragePercent() {
         if (totalHarvest == 0) return 100.0f;
         return 100.0f * harvestCovered / totalHarvest;
-    }
-
-    public long getSolveTimeMs() {
-        return solveTimeMs;
-    }
-
-    public boolean isTimedOut() {
-        return timedOut;
     }
 
     public int getBlockCount() {
@@ -92,7 +44,7 @@ public class SolverResult {
     }
 
     public static SolverResult empty(FaceGrid input) {
-        return builder(input.getWidth(), input.getHeight(), input.getDirection())
+        return builder(input.width(), input.height(), input.direction())
                 .totalHarvest(input.getHarvestCount())
                 .harvestCovered(0)
                 .solveTimeMs(0)

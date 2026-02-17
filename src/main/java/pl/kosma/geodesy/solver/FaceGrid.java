@@ -10,29 +10,17 @@ import net.minecraft.util.math.Direction;
  *
  * <p>Internal storage is row-major: cells[row][col] (i.e. cells[x][y]).
  */
-public class FaceGrid {
-
+public record FaceGrid(int width, int height, byte[][] cells, Direction direction) {
     public static final byte CELL_AIR = 0;
     public static final byte CELL_BLOCKED = -1;
     public static final byte CELL_HARVEST = 1;
 
-    private final int width;
-    private final int height;
-    private final byte[][] cells;
-    private final Direction direction;
-
     public FaceGrid(int width, int height, Direction direction) {
-        this.width = width;
-        this.height = height;
-        this.direction = direction;
-        this.cells = new byte[width][height];
+        this(width, height, new byte[width][height], direction);
     }
 
     public FaceGrid(byte[][] cells, int width, int height, Direction direction) {
-        this.width = width;
-        this.height = height;
-        this.direction = direction;
-        this.cells = new byte[width][height];
+        this(width, height, new byte[width][height], direction);
         for (int x = 0; x < width; x++) {
             System.arraycopy(cells[x], 0, this.cells[x], 0, height);
         }
@@ -44,18 +32,6 @@ public class FaceGrid {
 
     public void setCell(int x, int y, byte value) {
         cells[x][y] = value;
-    }
-
-    public int getWidth() {
-        return width;
-    }
-
-    public int getHeight() {
-        return height;
-    }
-
-    public Direction getDirection() {
-        return direction;
     }
 
     public int countCells(byte value) {

@@ -249,8 +249,8 @@ public class GeodesyCore {
 
             future.<Void>handle((result, e) -> {
                 if (e != null) {
-                    LOGGER.error("Failed to solve face {}", faceGrid.getDirection(), e);
-                    sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.getDirection(), e.getMessage());
+                    LOGGER.error("Failed to solve face {}", faceGrid.direction(), e);
+                    sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.direction(), e.getMessage());
                 }
                 // Always add a result whether it failed or not because the next loop expects a set number of results
                 futures.add(result);
@@ -266,17 +266,17 @@ public class GeodesyCore {
 
                 world.getServer().execute(() -> {
                     // Apply the solution to the world (must be on main thread)
-                    applySolverResult(result.getDirection(), result);
+                    applySolverResult(result.direction(), result);
 
                     // Report results
                     sendCommandFeedback("  %s: %.0f%% coverage (%d/%d), %d blocks, %dms%s",
-                            result.getDirection(),
+                            result.direction(),
                             result.getCoveragePercent(),
-                            result.getHarvestCovered(),
-                            result.getTotalHarvest(),
+                            result.harvestCovered(),
+                            result.totalHarvest(),
                             result.getBlockCount(),
-                            result.getSolveTimeMs(),
-                            result.isTimedOut() ? " (timed out)" : "");
+                            result.solveTimeMs(),
+                            result.timedOut() ? " (timed out)" : "");
                 });
             } catch (Exception e) {
                 LOGGER.error("Error while applying solver results", e);
@@ -433,8 +433,8 @@ public class GeodesyCore {
     private void applySolverResult(Direction direction, SolverResult result) {
         // Place sticky blocks for each cell
         BlockPos.Mutable mutablePos = new BlockPos.Mutable();
-        for (int x = 0; x < result.getWidth(); x++) {
-            for (int y = 0; y < result.getHeight(); y++) {
+        for (int x = 0; x < result.width(); x++) {
+            for (int y = 0; y < result.height(); y++) {
                 byte placement = result.getPlacement(x, y);
                 if (placement == 0) {
                     continue;
@@ -457,7 +457,7 @@ public class GeodesyCore {
         }
 
         // Place mob heads for each island
-        for (IslandFaceSolver.Island island : result.getIslands()) {
+        for (IslandFaceSolver.Island island : result.islands()) {
             placeMobHeadsForIsland(direction, island);
         }
     }
