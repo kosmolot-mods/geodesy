@@ -1046,7 +1046,7 @@ public class GeodesyCore {
     private WeakReference<ServerPlayerEntity> player;
 
     public void setPlayerEntity(ServerPlayerEntity player) {
-        if (this.player.get() != player) this.player = new WeakReference<>(player);
+        if (this.player == null || this.player.get() != player) this.player = new WeakReference<>(player);
     }
 
     private void sendCommandFeedback(Text message) {
