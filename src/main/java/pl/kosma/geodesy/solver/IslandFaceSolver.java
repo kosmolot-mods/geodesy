@@ -61,7 +61,7 @@ public class IslandFaceSolver implements FaceSolver {
     // Underflow will impact the upper 16 bits, but we rely on range checks on the lower 16 bits to catch that.
     private static final int[] DIRECTIONS = {cellKey(0, 1), -1, cellKey(1, 0), cellKey(-1, 0)};
 
-    private record Shape(BitSet mask, int onesCovered, IntSet cells, LShape lShape) {}
+    private record Shape(IntSet cells, BitSet mask, BitSet neighborsMask, int onesCovered, LShape lShape) {}
 
     /**
      * @param material    1 = slime, 2 = honey
@@ -72,7 +72,7 @@ public class IslandFaceSolver implements FaceSolver {
      * @param stemCells   the 3 cells forming the main stem of the L-shape
      * @param stopperCell the cell on the shorter leg of the L-shape
      */
-    public record LShape(IntSet stemCells, int stopperCell) {}
+    public record LShape(IntSet stemCells, BitSet stemMask, BitSet stemNeighborsMask, int stopperCell) {}
 
     @Override
     public SolverResult solve(FaceGrid input, SolverConfig config) {
@@ -113,7 +113,7 @@ public class IslandFaceSolver implements FaceSolver {
 
         precomputeShapes();
         sortShapes();
-        backtrack(0, new BitSet(totalCells), new ArrayList<>(), 0, targets.size(), 0);
+        backtrack(0, new ArrayList<>(), new BitSet(totalCells), new BitSet(totalCells), new BitSet(totalCells), 0, targets.size(), 0);
 
         long solveTime = System.currentTimeMillis() - startTime;
         boolean timedOut = solveTime >= timeoutMs;
@@ -226,7 +226,7 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     // Finds the L-shape cells (4 cells: 3 in a row + 1 perpendicular).
-    private static LShape findLShapeCells(IntSet cells) {
+    private LShape findLShapeCells(IntSet cells) {
         for (int key : cells) {
             for (int stemDir : DIRECTIONS) {
                 int prevKey = key - stemDir;
@@ -240,13 +240,15 @@ public class IslandFaceSolver implements FaceSolver {
                         // Check corner at prev end
                         int cornerKey = prevKey + perpDir;
                         if (cells.contains(cornerKey)) {
-                            return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
+                            IntSet stemCells = IntSet.of(prevKey, key, nextKey);
+                            return new LShape(stemCells, getMask(stemCells), getNeighborsMask(stemCells), cornerKey);
                         }
 
                         // Check corner at next end
                         cornerKey = nextKey + perpDir;
                         if (cells.contains(cornerKey)) {
-                            return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
+                            IntSet stemCells = IntSet.of(prevKey, key, nextKey);
+                            return new LShape(stemCells, getMask(stemCells), getNeighborsMask(stemCells), cornerKey);
                         }
                     }
                 }
@@ -256,22 +258,43 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     private Shape createShape(IntSet newShape, LShape lShape) {
-        BitSet mask = new BitSet(totalCells);
         int ones = 0;
 
         for (int key : newShape) {
             int r = keyRow(key);
             int c = keyCol(key);
-
-            int bit = cellBit(r, c);
-            mask.set(bit);
-
             if (grid[r][c] == FaceGrid.CELL_HARVEST) {
                 ones++;
             }
         }
 
-        return new Shape(mask, ones, newShape, lShape);
+        return new Shape(newShape, getMask(newShape), getNeighborsMask(newShape), ones, lShape);
+    }
+
+    private BitSet getMask(IntSet cells) {
+        BitSet mask = new BitSet();
+        for (int key : cells) {
+            int r = keyRow(key);
+            int c = keyCol(key);
+            mask.set(cellBit(r, c));
+        }
+        return mask;
+    }
+
+    private BitSet getNeighborsMask(IntSet shape) {
+        BitSet neighborsMask = new BitSet();
+        for (int key : shape) {
+            int r = keyRow(key);
+            int c = keyCol(key);
+            for (int dir : DIRECTIONS) {
+                int nr = r + keyRow(dir);
+                int nc = c + keyCol(dir);
+                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                    neighborsMask.set(cellBit(nr, nc));
+                }
+            }
+        }
+        return neighborsMask;
     }
 
     private void sortShapes() {
@@ -286,7 +309,8 @@ public class IslandFaceSolver implements FaceSolver {
         }
     }
 
-    private void backtrack(int sortedIdx, BitSet occupiedMask, List<Island> currentIslands,
+    private void backtrack(int sortedIdx, List<Island> currentIslands,
+                           BitSet slimeMask, BitSet honeyMask, BitSet lShapeStemMask,
                            int currentOnes, int remainingPossibleTargets, int currentIslandsCount) {
         if (System.currentTimeMillis() - startTime > timeoutMs) {
             return;
@@ -311,81 +335,65 @@ public class IslandFaceSolver implements FaceSolver {
         int targetBit = cellBit(keyRow(targetKey), keyCol(targetKey));
 
         // Pruning: target already covered?
-        if (occupiedMask.get(targetBit)) {
-            backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, remainingPossibleTargets, currentIslandsCount);
+        if (slimeMask.get(targetBit) || honeyMask.get(targetBit)) {
+            backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, lShapeStemMask, currentOnes, remainingPossibleTargets, currentIslandsCount);
             return;
         }
 
         List<Shape> shapes = possibleShapes.getOrDefault(realTargetIdx, Collections.emptyList());
 
         for (Shape shape : shapes) {
-            if (occupiedMask.intersects(shape.mask)) continue;
+            if (slimeMask.intersects(shape.mask) || honeyMask.intersects(shape.mask)) continue;
 
-            byte adjColors = 0;
-            boolean possible = true;
+            // L-shapes contain the flying machine mechanism (pistons + slime/honey).
+            // Even though adjacent islands use different materials, adjacent L-shapes
+            // would cause mechanical interference during piston extension — the
+            // flying machines would push/pull each other's components.
+            if (isAdjacent(lShapeStemMask, shape.lShape)) continue;
 
-            for (Island existing : currentIslands) {
-                // L-shapes contain the flying machine mechanism (pistons + slime/honey).
-                // Even though adjacent islands use different materials, adjacent L-shapes
-                // would cause mechanical interference during piston extension — the
-                // flying machines would push/pull each other's components.
-                if (isAdjacent(shape.lShape, existing.lShape)) {
-                    possible = false;
-                    break;
-                }
+            // Check if this shape would be adjacent to both slime and honey islands, which is not allowed
+            boolean slimeAdj = isAdjacent(slimeMask, shape);
+            if (slimeAdj && isAdjacent(honeyMask, shape)) continue;
 
-                // Adjacent islands must have different colors
-                if (isAdjacent(shape.cells, existing.cells)) {
-                    adjColors |= (byte) (1 << existing.material);
-                    if (hasColor(adjColors, SLIME) && hasColor(adjColors, HONEY)) {
-                        possible = false;
-                        break;
-                    }
-                }
-            }
-
-            if (!possible) continue;
-
-            byte color = hasColor(adjColors, SLIME) ? HONEY : SLIME;
+            byte color = slimeAdj ? HONEY : SLIME;
 
             currentIslands.add(new Island(shape.cells, shape.lShape, color));
-            occupiedMask.or(shape.mask);
+            if (slimeAdj) honeyMask.or(shape.mask);
+            else slimeMask.or(shape.mask);
+            lShapeStemMask.or(shape.lShape.stemMask);
 
             backtrack(
                     sortedIdx + 1,
-                    occupiedMask,
                     currentIslands,
+                    slimeMask,
+                    honeyMask,
+                    lShapeStemMask,
                     currentOnes + shape.onesCovered,
                     remainingPossibleTargets - shape.onesCovered,
                     currentIslandsCount + 1
             );
 
             currentIslands.removeLast();
-            occupiedMask.xor(shape.mask);
+            if (slimeAdj) honeyMask.andNot(shape.mask);
+            else slimeMask.andNot(shape.mask);
+            lShapeStemMask.andNot(shape.lShape.stemMask);
         }
 
         // Option: skip this target
         // There are no valid shapes that cover this target
-        backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
+        backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, lShapeStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
     }
 
     private boolean hasColor(byte colors, byte material) {
         return (colors & (1 << material)) != 0;
     }
 
-    private boolean isAdjacent(LShape cells1, LShape cells2) {
-        return isAdjacent(cells1.stemCells, cells2.stemCells);
+    private boolean isAdjacent(BitSet lShapeStemMask, LShape newLShape) {
+        return lShapeStemMask.intersects(newLShape.stemNeighborsMask);
     }
 
-    private boolean isAdjacent(IntSet cells1, IntSet cells2) {
-        for (int key : cells1) {
-            for (int dir : DIRECTIONS) {
-                if (cells2.contains(key + dir)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+    private boolean isAdjacent(BitSet cellsMask, Shape newShape) {
+        return cellsMask.intersects(newShape.neighborsMask);
     }
 
     private SolverResult buildResult(FaceGrid input, long solveTime, boolean timedOut) {
