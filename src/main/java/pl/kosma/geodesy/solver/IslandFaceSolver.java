@@ -1,9 +1,8 @@
 package pl.kosma.geodesy.solver;
 
-import it.unimi.dsi.fastutil.bytes.ByteOpenHashSet;
-import it.unimi.dsi.fastutil.bytes.ByteSet;
 import it.unimi.dsi.fastutil.ints.*;
-import it.unimi.dsi.fastutil.objects.*;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
+import it.unimi.dsi.fastutil.objects.ObjectSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,7 +61,7 @@ public class IslandFaceSolver implements FaceSolver {
     // Underflow will impact the upper 16 bits, but we rely on range checks on the lower 16 bits to catch that.
     private static final int[] DIRECTIONS = {cellKey(0, 1), -1, cellKey(1, 0), cellKey(-1, 0)};
 
-    private record Shape(BitSet mask, int onesCovered, IntSet cells) {}
+    private record Shape(BitSet mask, int onesCovered, IntSet cells, LShape lShape) {}
 
     /**
      * @param material    1 = slime, 2 = honey
@@ -183,10 +182,15 @@ public class IslandFaceSolver implements FaceSolver {
                         queueAir.add(newShape);
                     }
 
-                    if (newShape.size() < MIN_ISLAND_SIZE || !hasLShape(newShape) || !seenShapesGlobal.add(newShape)) continue;
+                    if (newShape.size() < MIN_ISLAND_SIZE) continue;
+
+                    LShape lShape = findLShapeCells(newShape);
+                    if (lShape == null) continue;
+
+                    if (!seenShapesGlobal.add(newShape)) continue;
 
                     // We have not seen this shape globally
-                    Shape shape = createShape(newShape);
+                    Shape shape = createShape(newShape, lShape);
 
                     // Assign shape to every target it covers
                     for (int key : newShape) {
@@ -221,44 +225,37 @@ public class IslandFaceSolver implements FaceSolver {
         return neighbors;
     }
 
-    // An L-shape requires at least one cell to have neighbors in perpendicular directions.
-    private boolean hasLShape(IntSet cells) {
+    // Finds the L-shape cells (4 cells: 3 in a row + 1 perpendicular).
+    private static LShape findLShapeCells(IntSet cells) {
         for (int key : cells) {
-            int r = keyRow(key);
-            int c = keyCol(key);
+            for (int stemDir : DIRECTIONS) {
+                int prevKey = key - stemDir;
+                int nextKey = key + stemDir;
 
-            // Check for horizontal line segment (3 cells)
-            boolean hasLeft = cells.contains(cellKey(r, c - 1));
-            boolean hasRight = cells.contains(cellKey(r, c + 1));
+                if (cells.contains(prevKey) && cells.contains(nextKey)) {
+                    for (int perpDir : DIRECTIONS) {
+                        // Black magic with packed shorts
+                        if (perpDir == stemDir || perpDir == -stemDir) continue;
 
-            if (hasLeft && hasRight) {
-                for (int dr : new int[]{-1, 1}) {
-                    for (int dc = -1; dc <= 1; dc++) {
-                        if (cells.contains(cellKey(r + dr, c + dc))) {
-                            return true;
+                        // Check corner at prev end
+                        int cornerKey = prevKey + perpDir;
+                        if (cells.contains(cornerKey)) {
+                            return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
                         }
-                    }
-                }
-            }
 
-            // Check for vertical line segment (3 cells)
-            boolean hasUp = cells.contains(cellKey(r - 1, c));
-            boolean hasDown = cells.contains(cellKey(r + 1, c));
-
-            if (hasUp && hasDown) {
-                for (int dr = -1; dr <= 1; dr++) {
-                    for (int dc : new int[]{-1, 1}) {
-                        if (cells.contains(cellKey(r + dr, c + dc))) {
-                            return true;
+                        // Check corner at next end
+                        cornerKey = nextKey + perpDir;
+                        if (cells.contains(cornerKey)) {
+                            return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
                         }
                     }
                 }
             }
         }
-        return false;
+        return null;
     }
 
-    private Shape createShape(IntSet newShape) {
+    private Shape createShape(IntSet newShape, LShape lShape) {
         BitSet mask = new BitSet(totalCells);
         int ones = 0;
 
@@ -274,7 +271,7 @@ public class IslandFaceSolver implements FaceSolver {
             }
         }
 
-        return new Shape(mask, ones, newShape);
+        return new Shape(mask, ones, newShape, lShape);
     }
 
     private void sortShapes() {
@@ -334,10 +331,7 @@ public class IslandFaceSolver implements FaceSolver {
         for (Shape shape : shapes) {
             if (occupiedMask.intersects(shape.mask)) continue;
 
-            LShape newLShape = findLShapeCells(shape.cells);
-            if (newLShape == null) continue;
-
-            ByteSet adjColors = new ByteOpenHashSet();
+            byte adjColors = 0;
             boolean possible = true;
 
             for (Island existing : currentIslands) {
@@ -345,15 +339,15 @@ public class IslandFaceSolver implements FaceSolver {
                 // Even though adjacent islands use different materials, adjacent L-shapes
                 // would cause mechanical interference during piston extension — the
                 // flying machines would push/pull each other's components.
-                if (isAdjacent(newLShape, existing.lShape)) {
+                if (isAdjacent(shape.lShape, existing.lShape)) {
                     possible = false;
                     break;
                 }
 
                 // Adjacent islands must have different colors
                 if (isAdjacent(shape.cells, existing.cells)) {
-                    adjColors.add(existing.material);
-                    if (adjColors.size() >= 2) {
+                    adjColors |= (byte) (1 << existing.material);
+                    if (hasColor(adjColors, SLIME) && hasColor(adjColors, HONEY)) {
                         possible = false;
                         break;
                     }
@@ -362,9 +356,9 @@ public class IslandFaceSolver implements FaceSolver {
 
             if (!possible) continue;
 
-            byte color = adjColors.contains(SLIME) ? HONEY : SLIME;
+            byte color = hasColor(adjColors, SLIME) ? HONEY : SLIME;
 
-            currentIslands.add(new Island(shape.cells, newLShape, color));
+            currentIslands.add(new Island(shape.cells, shape.lShape, color));
 
             BitSet newOccupied = (BitSet) occupiedMask.clone();
             newOccupied.or(shape.mask);
@@ -384,6 +378,10 @@ public class IslandFaceSolver implements FaceSolver {
         backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, currentIslandsCount);
     }
 
+    private boolean hasColor(byte colors, byte material) {
+        return (colors & (1 << material)) != 0;
+    }
+
     private boolean isAdjacent(LShape cells1, LShape cells2) {
         return isAdjacent(cells1.stemCells, cells2.stemCells);
     }
@@ -397,36 +395,6 @@ public class IslandFaceSolver implements FaceSolver {
             }
         }
         return false;
-    }
-
-    // Finds the L-shape cells (4 cells: 3 in a row + 1 perpendicular).
-    private LShape findLShapeCells(IntSet cells) {
-        for (int key : cells) {
-            for (int stemDir : DIRECTIONS) {
-                int prevKey = key - stemDir;
-                int nextKey = key + stemDir;
-
-                if (cells.contains(prevKey) && cells.contains(nextKey)) {
-                    for (int perpDir : DIRECTIONS) {
-                        // Black magic with packed shorts
-                        if (perpDir == stemDir || perpDir == -stemDir) continue;
-
-                        // Check corner at prev end
-                        int cornerKey = prevKey + perpDir;
-                        if (cells.contains(cornerKey)) {
-                            return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
-                        }
-
-                        // Check corner at next end
-                        cornerKey = nextKey + perpDir;
-                        if (cells.contains(cornerKey)) {
-                            return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
-                        }
-                    }
-                }
-            }
-        }
-        return null;
     }
 
     private SolverResult buildResult(FaceGrid input, long solveTime, boolean timedOut) {
