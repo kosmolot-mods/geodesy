@@ -3,10 +3,7 @@ package pl.kosma.geodesy.solver;
 import it.unimi.dsi.fastutil.bytes.ByteOpenHashSet;
 import it.unimi.dsi.fastutil.bytes.ByteSet;
 import it.unimi.dsi.fastutil.ints.*;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
-import it.unimi.dsi.fastutil.objects.ObjectRBTreeSet;
-import it.unimi.dsi.fastutil.objects.ObjectSet;
-import it.unimi.dsi.fastutil.objects.ObjectSortedSets;
+import it.unimi.dsi.fastutil.objects.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +49,7 @@ public class IslandFaceSolver implements FaceSolver {
     private Int2IntOpenHashMap targetIndices;  // Map cell key -> index in targets
 
     // Precomputed shapes: Map target_index -> list of Shape
-    private Int2ObjectOpenHashMap<SortedSet<Shape>> possibleShapes;
+    private Int2ObjectOpenHashMap<List<Shape>> possibleShapes;
 
     // Sorted target indices (by scarcity - fewest shapes first)
     private int[] sortedTargetIndices;
@@ -116,6 +113,7 @@ public class IslandFaceSolver implements FaceSolver {
         LOGGER.info("Solving {}x{} grid with {} harvest cells", rows, cols, targets.size());
 
         precomputeShapes();
+        sortShapes();
         backtrack(0, new BitSet(totalCells), new ArrayList<>(), 0, 0);
 
         long solveTime = System.currentTimeMillis() - startTime;
@@ -147,7 +145,7 @@ public class IslandFaceSolver implements FaceSolver {
         ObjectSet<IntSet> seenShapesGlobal = new ObjectOpenHashSet<>();
 
         for (int tIdx = 0; tIdx < targets.size(); tIdx++) {
-            possibleShapes.put(tIdx, new ObjectRBTreeSet<>(SHAPE_PRIORITY_COMPARATOR));
+            possibleShapes.computeIfAbsent(tIdx, k -> new ArrayList<>());
 
             int start = targets.getInt(tIdx);
 
@@ -194,24 +192,13 @@ public class IslandFaceSolver implements FaceSolver {
                     for (int key : newShape) {
                         int ti = targetIndices.get(key);
                         if (ti != -1) {
-                            possibleShapes.computeIfAbsent(ti, k -> new ObjectRBTreeSet<>(SHAPE_PRIORITY_COMPARATOR)).add(shape);
+                            possibleShapes.computeIfAbsent(ti, k -> new ArrayList<>()).add(shape);
                         }
                     }
 
                     shapesFound++;
                 }
             }
-        }
-
-        // Sort targets by scarcity (fewest shapes first)
-        sortedTargetIndices = new int[targets.size()];
-        IntList indices = new IntArrayList();
-        for (int i = 0; i < targets.size(); i++) {
-            indices.add(i);
-        }
-        indices.sort(IntComparator.comparingInt(i -> possibleShapes.getOrDefault(i, ObjectSortedSets.emptySet()).size()));
-        for (int i = 0; i < indices.size(); i++) {
-            sortedTargetIndices[i] = indices.getInt(i);
         }
 
         LOGGER.debug("Found {} unique shapes", seenShapesGlobal.size());
@@ -290,6 +277,18 @@ public class IslandFaceSolver implements FaceSolver {
         return new Shape(mask, ones, new IntOpenHashSet(newShape));
     }
 
+    private void sortShapes() {
+        sortedTargetIndices = new int[targets.size()];
+        for (int i = 0; i < targets.size(); i++) {
+            sortedTargetIndices[i] = i;
+        }
+        IntArrays.quickSort(sortedTargetIndices, IntComparator.comparingInt(i -> possibleShapes.getOrDefault(i, Collections.emptyList()).size()));
+
+        for (List<Shape> possibleShapes : possibleShapes.values()) {
+            possibleShapes.sort(SHAPE_PRIORITY_COMPARATOR);
+        }
+    }
+
     private void backtrack(int sortedIdx, BitSet occupiedMask, List<Island> currentIslands,
                            int currentOnes, int currentIslandsCount) {
         if (System.currentTimeMillis() - startTime > timeoutMs) {
@@ -303,10 +302,7 @@ public class IslandFaceSolver implements FaceSolver {
                 maxScore = score;
                 bestSolution = new ArrayList<>();
                 for (Island island : currentIslands) {
-                    bestSolution.add(new Island(
-                            new IntOpenHashSet(island.cells) {},
-                            island.lShape,
-                            island.material));
+                    bestSolution.add(new Island(new IntOpenHashSet(island.cells), island.lShape, island.material));
                 }
             }
             return;
@@ -336,7 +332,7 @@ public class IslandFaceSolver implements FaceSolver {
         double currentScore = currentOnes - (currentIslandsCount * islandCost);
         if (currentScore + remainingTargets <= maxScore) return;
 
-        SortedSet<Shape> shapes = possibleShapes.getOrDefault(realTargetIdx, ObjectSortedSets.emptySet());
+        List<Shape> shapes = possibleShapes.getOrDefault(realTargetIdx, Collections.emptyList());
 
         for (Shape shape : shapes) {
             if (occupiedMask.intersects(shape.mask)) continue;
