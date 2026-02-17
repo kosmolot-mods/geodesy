@@ -21,7 +21,7 @@ public class UnholyBookOfGeodesy {
                    The Unholy Book
                      of Geodesy
                              *
-                  
+                
                       by Kosmolot
                 
                 
@@ -29,7 +29,7 @@ public class UnholyBookOfGeodesy {
                 /geodesy area
                 /geodesy analyze
                 /geodesy project
-                ...place blocks...
+                /geodesy solve
                 /geodesy assemble
                 """);
         pages.add(
@@ -73,7 +73,16 @@ public class UnholyBookOfGeodesy {
                 """);
         pages.add(
                 """
-                Step 5:
+                Steps 5-6: (Automatic Alternative)
+                /geodesy solve
+                
+                The mod will solve for a layout of flying machines. It's not perfect.
+                
+                Humans still better than computers, for now.
+                """);
+        pages.add(
+                """
+                Step 5: (Manual Alternative)
                 
                 Place sticky block structures on the sides of the farm. All moss blocks and no crying obsidian blocks should be covered.
                 
@@ -81,9 +90,9 @@ public class UnholyBookOfGeodesy {
                 """);
         pages.add(
                 """
-                Step 6:
+                Step 6: (Manual Alternative)
                 
-                Place mob heads as markers indicating where the flying machines should go. See the Curseforge mod page for details.
+                Place mob heads as markers indicating where the flying machines should go. See the Modrinth mod page for details.
                 
                 Just don't summon a wither!
                 """);
@@ -119,7 +128,7 @@ public class UnholyBookOfGeodesy {
                 
                 Feeling lost?
                 
-                Check out the mod page on Curseforge for screenshots and more detailed instructions.
+                Check out the mod page on Modrinth for screenshots and more detailed instructions.
                 """);
         grimoire.set(DataComponentTypes.WRITTEN_BOOK_CONTENT, new WrittenBookContentComponent(RawFilteredPair.of("The Unholy Book of Geodesy"), "Kosmolot", 0, pages.stream().map(Text::of).map(RawFilteredPair::of).toList(), true));
         return grimoire;

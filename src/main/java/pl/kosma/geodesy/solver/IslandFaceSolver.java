@@ -59,7 +59,9 @@ public class IslandFaceSolver implements FaceSolver {
     private List<Island> bestSolution;
     private double maxScore;
 
-    private static final int[][] DIRECTIONS = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+    // Special processing for subtracting 1 from the lower 16 bits.
+    // Underflow will impact the upper 16 bits, but we rely on range checks on the lower 16 bits to catch that.
+    private static final int[] DIRECTIONS = {cellKey(0, 1), -1, cellKey(1, 0), cellKey(-1, 0)};
 
     private record Shape(BitSet mask, int onesCovered, IntSet cells) {}
 
@@ -129,7 +131,8 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     public static int keyCol(int key) {
-        return key & 0xFFFF;
+        // This interprets the 16th bit as the sign bit
+        return key << 16 >> 16;
     }
 
     private int cellBit(int row, int col) {
@@ -216,15 +219,13 @@ public class IslandFaceSolver implements FaceSolver {
         IntSet neighbors = new IntOpenHashSet();
 
         for (int key : current) {
-            int r = keyRow(key);
-            int c = keyCol(key);
-
-            for (int[] dir : DIRECTIONS) {
-                int nr = r + dir[0];
-                int nc = c + dir[1];
+            for (int dir : DIRECTIONS) {
+                int nkey = key + dir;
+                int nr = keyRow(nkey);
+                int nc = keyCol(nkey);
 
                 if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] != FaceGrid.CELL_BLOCKED) {
-                    neighbors.add(cellKey(nr, nc));
+                    neighbors.add(nkey);
                 }
             }
         }
@@ -394,10 +395,8 @@ public class IslandFaceSolver implements FaceSolver {
 
     private boolean isAdjacent(IntSet cells1, IntSet cells2) {
         for (int key : cells1) {
-            int r = keyRow(key);
-            int c = keyCol(key);
-            for (int[] dir : DIRECTIONS) {
-                if (cells2.contains(cellKey(r + dir[0], c + dir[1]))) {
+            for (int dir : DIRECTIONS) {
+                if (cells2.contains(key + dir)) {
                     return true;
                 }
             }
@@ -408,37 +407,23 @@ public class IslandFaceSolver implements FaceSolver {
     // Finds the L-shape cells (4 cells: 3 in a row + 1 perpendicular).
     private LShape findLShapeCells(IntSet cells) {
         for (int key : cells) {
-            int x = keyRow(key);
-            int y = keyCol(key);
-
-            for (int[] stemDir : DIRECTIONS) {
-                int prevX = x - stemDir[0];
-                int prevY = y - stemDir[1];
-                int nextX = x + stemDir[0];
-                int nextY = y + stemDir[1];
-
-                int prevKey = cellKey(prevX, prevY);
-                int nextKey = cellKey(nextX, nextY);
+            for (int stemDir : DIRECTIONS) {
+                int prevKey = key - stemDir;
+                int nextKey = key + stemDir;
 
                 if (cells.contains(prevKey) && cells.contains(nextKey)) {
-                    for (int[] perpDir : DIRECTIONS) {
-                        if (perpDir[0] == stemDir[0] && perpDir[1] == stemDir[1]) continue;
-                        if (perpDir[0] == -stemDir[0] && perpDir[1] == -stemDir[1]) continue;
+                    for (int perpDir : DIRECTIONS) {
+                        // Black magic with packed shorts
+                        if (perpDir == stemDir || perpDir == -stemDir) continue;
 
                         // Check corner at prev end
-                        int cornerX = prevX + perpDir[0];
-                        int cornerY = prevY + perpDir[1];
-                        int cornerKey = cellKey(cornerX, cornerY);
-
+                        int cornerKey = prevKey + perpDir;
                         if (cells.contains(cornerKey)) {
                             return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
                         }
 
                         // Check corner at next end
-                        cornerX = nextX + perpDir[0];
-                        cornerY = nextY + perpDir[1];
-                        cornerKey = cellKey(cornerX, cornerY);
-
+                        cornerKey = nextKey + perpDir;
                         if (cells.contains(cornerKey)) {
                             return new LShape(IntSet.of(prevKey, key, nextKey), cornerKey);
                         }

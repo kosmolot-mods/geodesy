@@ -484,8 +484,7 @@ public class GeodesyCore {
             world.setBlockState(pos, floorVariant.getDefaultState(), NOTIFY_LISTENERS);
         } else {
             // Wall variant for horizontal faces
-            world.setBlockState(pos, wallVariant.getDefaultState()
-                    .with(net.minecraft.state.property.Properties.HORIZONTAL_FACING, faceDirection.getOpposite()), NOTIFY_LISTENERS);
+            world.setBlockState(pos, wallVariant.getDefaultState().with(Properties.HORIZONTAL_FACING, faceDirection), NOTIFY_LISTENERS);
         }
     }
 
