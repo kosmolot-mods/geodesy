@@ -146,16 +146,16 @@ public class GeodesyFabricMod implements ModInitializer {
                             .executes(context -> geodesyProjectCommand(context,1)))
                         .executes(context -> geodesyProjectCommand(context,0)))
                     .then(literal("solve")
-                        .then(argument("cost", DoubleArgumentType.doubleArg(1.0, 12.0))
-                            .then(argument("timeout", IntegerArgumentType.integer(1, 300))
+                        .then(argument("timeout", IntegerArgumentType.integer(1, 300))
+                            .then(argument("cost", DoubleArgumentType.doubleArg(1.0, 12.0))
                                 .executes(context -> {
                                     try {
                                         GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                        double cost = DoubleArgumentType.getDouble(context, "cost");
                                         int timeout = IntegerArgumentType.getInteger(context, "timeout");
+                                        double cost = DoubleArgumentType.getDouble(context, "cost");
                                         SolverConfig config = SolverConfig.builder()
-                                                .costThreshold(cost)
                                                 .timeoutMs(timeout * 1000L)
+                                                .costThreshold(cost)
                                                 .build();
                                         context.getSource().getServer().execute(() -> core.geodesySolve(config));
                                         return SINGLE_SUCCESS;
@@ -168,9 +168,9 @@ public class GeodesyFabricMod implements ModInitializer {
                             .executes(context -> {
                                 try {
                                     GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-                                    double cost = DoubleArgumentType.getDouble(context, "cost");
+                                    int timeout = IntegerArgumentType.getInteger(context, "timeout");
                                     SolverConfig config = SolverConfig.builder()
-                                            .costThreshold(cost)
+                                            .timeoutMs(timeout * 1000L)
                                             .build();
                                     context.getSource().getServer().execute(() -> core.geodesySolve(config));
                                     return SINGLE_SUCCESS;
