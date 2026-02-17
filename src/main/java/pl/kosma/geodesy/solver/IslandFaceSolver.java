@@ -80,9 +80,8 @@ public class IslandFaceSolver implements FaceSolver {
         timeoutMs = config.getTimeoutMs();
         islandCost = config.getCostThreshold();
 
-        // Convert FaceGrid to internal grid format (row-major, matching FaceGrid's storage)
-        rows = input.getHeight();
-        cols = input.getWidth();
+        rows = input.getWidth();
+        cols = input.getHeight();
         totalCells = rows * cols;
         grid = input.copyCells();
 
@@ -110,7 +109,7 @@ public class IslandFaceSolver implements FaceSolver {
             return SolverResult.empty(input);
         }
 
-        LOGGER.info("Solving {}x{} grid with {} harvest cells", cols, rows, targets.size());
+        LOGGER.info("Solving {}x{} grid with {} harvest cells", rows, cols, targets.size());
 
         precomputeShapes();
         backtrack(0, new BitSet(totalCells), new ArrayList<>(), 0, 0);
@@ -475,8 +474,8 @@ public class IslandFaceSolver implements FaceSolver {
             for (int key : island.cells) {
                 int r = keyRow(key);
                 int c = keyCol(key);
-                // FaceGrid uses (x, y) where x=col, y=row
-                builder.setPlacement(c, r, island.material);
+                // FaceGrid uses (x, y) where x=row, y=col
+                builder.setPlacement(r, c, island.material);
             }
 
             builder.addIsland(island);

@@ -220,11 +220,11 @@ public class GeodesyFabricMod implements ModInitializer {
     private int geodesyProjectCommand(CommandContext<ServerCommandSource> context, int argumentIndex) {
         try {
             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-            Set<Direction> directions = new LinkedHashSet<>(argumentIndex);
+            Direction[] directions = new Direction[argumentIndex];
             for (int i = 1; i <= argumentIndex; i++) {
-                directions.add(DirectionArgumentType.getDirection(context, "direction" + i));
+                directions[i - 1] = DirectionArgumentType.getDirection(context, "direction" + i);
             }
-            context.getSource().getServer().execute(() -> core.geodesyProject(directions.isEmpty() ? null : directions.toArray(new Direction[argumentIndex])));
+            context.getSource().getServer().execute(() -> core.geodesyProjectCommand(directions));
             return SINGLE_SUCCESS;
         } catch (Exception e) {
             LOGGER.error("project", e);

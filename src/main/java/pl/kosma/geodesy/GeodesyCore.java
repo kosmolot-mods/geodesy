@@ -102,6 +102,30 @@ public class GeodesyCore {
         }
     }
 
+    public void geodesyAnalyze() {
+        sendCommandFeedback("---");
+
+        // Return if geodesy area has not been run yet.
+        if (geode == null) {
+            sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
+            return;
+        }
+
+        // Run all possible projections and show the efficiencies.
+        sendCommandFeedback("Projection efficiency:");
+        geodesyProject(new Direction[]{Direction.EAST});
+        geodesyProject(new Direction[]{Direction.SOUTH});
+        geodesyProject(new Direction[]{Direction.UP});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.UP});
+        geodesyProject(new Direction[]{Direction.SOUTH, Direction.UP});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH, Direction.UP});
+        // Clean up the results of the last projection.
+        geodesyProject(null);
+        // Advise the user.
+        sendCommandFeedback("Now run /geodesy project with your chosen projections.");
+    }
+
     void geodesyProject(Direction[] directions) {
         // Return if geodesy area has not been run yet.
         if (geode == null || buddingAmethystPositions == null || amethystClusterPositions == null) {
@@ -157,28 +181,13 @@ public class GeodesyCore {
         sendCommandFeedback(" %s: %d%% (%d/%d)", layoutName, (int) efficiency, clustersCollected, amethystClusterPositions.size());
     }
 
-    public void geodesyAnalyze() {
+    void geodesyProjectCommand(Direction[] directions) {
         sendCommandFeedback("---");
 
-        // Return if geodesy area has not been run yet.
-        if (geode == null) {
-            sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
-            return;
-        }
+        geodesyProject(directions);
 
-        // Run all possible projections and show the efficiencies.
-        sendCommandFeedback("Projection efficiency:");
-        geodesyProject(new Direction[]{Direction.EAST});
-        geodesyProject(new Direction[]{Direction.SOUTH});
-        geodesyProject(new Direction[]{Direction.UP});
-        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH});
-        geodesyProject(new Direction[]{Direction.EAST, Direction.UP});
-        geodesyProject(new Direction[]{Direction.SOUTH, Direction.UP});
-        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH, Direction.UP});
-        // Clean up the results of the last projection.
-        geodesyProject(null);
-        // Advise the user.
-        sendCommandFeedback("Now run /geodesy project with your chosen projections.");
+        sendCommandFeedback("Now run /geodesy solve to find optimal slime/honey block placement for this layout.");
+        sendCommandFeedback("Alternatively, you can place blocks and skulls manually.");
     }
 
     // Solve for optimal slime/honey block placement. Must be run after /geodesy project.
@@ -353,9 +362,9 @@ public class GeodesyCore {
 
         // Iterate through the wall and populate the grid.
         BlockPos.Mutable mutablePos = new BlockPos.Mutable();
-        for (int w = 0; w < width; w++) {
-            for (int h = 0; h < height; h++) {
-                setMutableToWallPos(mutablePos, direction, w, h);
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                setMutableToWallPos(mutablePos, direction, x, y);
                 Block block = world.getBlockState(mutablePos).getBlock();
 
                 byte cellValue;
@@ -366,7 +375,7 @@ public class GeodesyCore {
                 } else {
                     cellValue = FaceGrid.CELL_AIR;
                 }
-                grid.setCell(w, h, cellValue);
+                grid.setCell(x, y, cellValue);
             }
         }
 
