@@ -113,7 +113,7 @@ public class IslandFaceSolver implements FaceSolver {
 
         precomputeShapes();
         sortShapes();
-        backtrack(0, new BitSet(totalCells), new ArrayList<>(), 0, 0);
+        backtrack(0, new BitSet(totalCells), new ArrayList<>(), 0, targets.size(), 0);
 
         long solveTime = System.currentTimeMillis() - startTime;
         boolean timedOut = solveTime >= timeoutMs;
@@ -287,20 +287,24 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     private void backtrack(int sortedIdx, BitSet occupiedMask, List<Island> currentIslands,
-                           int currentOnes, int currentIslandsCount) {
+                           int currentOnes, int remainingPossibleTargets, int currentIslandsCount) {
         if (System.currentTimeMillis() - startTime > timeoutMs) {
             return;
         }
 
+        double currentScore = currentOnes - (currentIslandsCount * islandCost);
+
         // Base case: all targets considered
         if (sortedIdx >= targets.size()) {
-            double score = currentOnes - (currentIslandsCount * islandCost);
-            if (score > maxScore) {
-                maxScore = score;
+            if (currentScore > maxScore) {
+                maxScore = currentScore;
                 bestSolution = new ArrayList<>(currentIslands);
             }
             return;
         }
+
+        // Pruning: score estimation
+        if (currentScore + remainingPossibleTargets <= maxScore) return;
 
         int realTargetIdx = sortedTargetIndices[sortedIdx];
         int targetKey = targets.getInt(realTargetIdx);
@@ -308,23 +312,9 @@ public class IslandFaceSolver implements FaceSolver {
 
         // Pruning: target already covered?
         if (occupiedMask.get(targetBit)) {
-            backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, currentIslandsCount);
+            backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, remainingPossibleTargets, currentIslandsCount);
             return;
         }
-
-        // Pruning: score estimation
-        int remainingTargets = 0;
-        for (int i = sortedIdx; i < targets.size(); i++) {
-            int ti = sortedTargetIndices[i];
-            int tkey = targets.getInt(ti);
-            int bit = cellBit(keyRow(tkey), keyCol(tkey));
-            if (!occupiedMask.get(bit)) {
-                remainingTargets++;
-            }
-        }
-
-        double currentScore = currentOnes - (currentIslandsCount * islandCost);
-        if (currentScore + remainingTargets <= maxScore) return;
 
         List<Shape> shapes = possibleShapes.getOrDefault(realTargetIdx, Collections.emptyList());
 
@@ -359,23 +349,24 @@ public class IslandFaceSolver implements FaceSolver {
             byte color = hasColor(adjColors, SLIME) ? HONEY : SLIME;
 
             currentIslands.add(new Island(shape.cells, shape.lShape, color));
-
-            BitSet newOccupied = (BitSet) occupiedMask.clone();
-            newOccupied.or(shape.mask);
+            occupiedMask.or(shape.mask);
 
             backtrack(
                     sortedIdx + 1,
-                    newOccupied,
+                    occupiedMask,
                     currentIslands,
                     currentOnes + shape.onesCovered,
+                    remainingPossibleTargets - shape.onesCovered,
                     currentIslandsCount + 1
             );
 
             currentIslands.removeLast();
+            occupiedMask.xor(shape.mask);
         }
 
         // Option: skip this target
-        backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, currentIslandsCount);
+        // There are no valid shapes that cover this target
+        backtrack(sortedIdx + 1, occupiedMask, currentIslands, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
     }
 
     private boolean hasColor(byte colors, byte material) {
