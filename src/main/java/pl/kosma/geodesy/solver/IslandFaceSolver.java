@@ -274,7 +274,7 @@ public class IslandFaceSolver implements FaceSolver {
             }
         }
 
-        return new Shape(mask, ones, new IntOpenHashSet(newShape));
+        return new Shape(mask, ones, newShape);
     }
 
     private void sortShapes() {
@@ -300,10 +300,7 @@ public class IslandFaceSolver implements FaceSolver {
             double score = currentOnes - (currentIslandsCount * islandCost);
             if (score > maxScore) {
                 maxScore = score;
-                bestSolution = new ArrayList<>();
-                for (Island island : currentIslands) {
-                    bestSolution.add(new Island(new IntOpenHashSet(island.cells), island.lShape, island.material));
-                }
+                bestSolution = new ArrayList<>(currentIslands);
             }
             return;
         }
