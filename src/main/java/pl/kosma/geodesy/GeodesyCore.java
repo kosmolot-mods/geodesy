@@ -21,6 +21,7 @@ import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.kosma.geodesy.solver.FaceGrid;
@@ -33,9 +34,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -69,6 +68,8 @@ public class GeodesyCore {
 
     // The directions used in the last /geodesy project command.
     private Direction @Nullable [] lastProjectedDirections;
+    // Used to makes sure another solve doesn't start while one is already running.
+    private CompletableFuture<Void> solveFuture;
 
     public void geodesyGeodesy() {
         sendCommandFeedback("Welcome to Geodesy!");
@@ -156,7 +157,7 @@ public class GeodesyCore {
 
 
         // Run the projection.
-        for (Direction direction: directions) {
+        for (Direction direction : directions) {
             this.projectGeode(direction);
         }
 
@@ -236,35 +237,30 @@ public class GeodesyCore {
             return;
         }
 
-        // Submit all solve tasks in parallel
-        CompletableFuture.runAsync(() -> geodesySolve(config, faceGrids));
-    }
-
-    private void geodesySolve(SolverConfig config, List<FaceGrid> faceGrids) {
-        BlockingQueue<SolverResult> futures = new LinkedBlockingQueue<>();
-        for (FaceGrid faceGrid : faceGrids) {
-
-            // Create a new solver instance for each face (thread safety)
-            CompletableFuture<SolverResult> future = CompletableFuture.supplyAsync(() -> new IslandFaceSolver().solve(faceGrid, config));
-
-            future.<Void>handle((result, e) -> {
-                if (e != null) {
-                    LOGGER.error("Failed to solve face {}", faceGrid.direction(), e);
-                    sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.direction(), e.getMessage());
-                }
-                // Always add a result whether it failed or not because the next loop expects a set number of results
-                futures.add(result);
-                return null;
-            });
+        if (solveFuture != null && !solveFuture.isDone()) {
+            sendCommandFeedback("Solve already in progress. Please wait for it to finish before starting another.");
+            return;
         }
 
-        // Wait for all solves to complete and apply results
-        // Results are applied sequentially to ensure thread-safe world modifications
-        for (int i = 0; i < faceGrids.size(); i++) {
-            try {
-                SolverResult result = futures.take();
+        // Submit all solve tasks in parallel
+        @SuppressWarnings("rawtypes")
+        CompletableFuture[] futures = faceGrids.stream()
+                .map(faceGrid -> solveFace(config, faceGrid))
+                .toArray(CompletableFuture[]::new);
 
-                world.getServer().execute(() -> {
+        solveFuture = CompletableFuture.allOf(futures)
+                .thenRun(() -> world.getServer().execute(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready.")));
+    }
+
+    private @NonNull CompletableFuture<Void> solveFace(SolverConfig config, FaceGrid faceGrid) {
+        // Create a new solver instance for each face (thread safety)
+        return CompletableFuture.supplyAsync(() -> new IslandFaceSolver().solve(faceGrid, config))
+                .exceptionally(e -> {
+                    LOGGER.error("Failed to solve face {}", faceGrid.direction(), e);
+                    sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.direction(), e.getMessage());
+                    return SolverResult.empty(faceGrid);
+                })
+                .thenAccept(result -> world.getServer().execute(() -> {
                     // Apply the solution to the world (must be on main thread)
                     applySolverResult(result.direction(), result);
 
@@ -276,15 +272,9 @@ public class GeodesyCore {
                             result.totalHarvest(),
                             result.getBlockCount(),
                             result.solveTimeMs(),
-                            result.timedOut() ? " (timed out)" : "");
-                });
-            } catch (Exception e) {
-                LOGGER.error("Error while applying solver results", e);
-                sendCommandFeedback("Error while applying solver results: %s", e.getMessage());
-            }
-        }
-
-        world.getServer().execute(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready."));
+                            result.timedOut() ? " (timed out)" : ""
+                    );
+                }));
     }
 
     // Clears sticky blocks and mob heads for a face. Allows re-running /geodesy solve.
@@ -501,11 +491,11 @@ public class GeodesyCore {
         }
 
         // Plop the clock at the top
-        BlockPos clockPos = new BlockPos((geode.getMinX()+geode.getMaxX())/2+3, geode.getMaxY()+CLOCK_Y_OFFSET, (geode.getMinZ()+geode.getMaxZ())/2+1);
+        BlockPos clockPos = new BlockPos((geode.getMinX() + geode.getMaxX()) / 2 + 3, geode.getMaxY() + CLOCK_Y_OFFSET, (geode.getMinZ() + geode.getMaxZ()) / 2 + 1);
         BlockPos torchPos = buildClock(clockPos, Direction.WEST, Direction.NORTH);
 
         // Run along all the axes and move all slime/honey blocks inside the frame.
-        for (Direction direction: Direction.values()) {
+        for (Direction direction : Direction.values()) {
             geode.slice(direction.getAxis(), slice -> {
                 // Calculate positions of the source and target blocks for moving.
                 BlockPos targetPos = slice.getEndpoint(direction).offset(direction, WALL_OFFSET);
@@ -520,7 +510,7 @@ public class GeodesyCore {
         }
 
         // Check each slice for a marker block.
-        for (Direction slicingDirection: Direction.values()) {
+        for (Direction slicingDirection : Direction.values()) {
             List<BlockPos> triggerObserverPositions = new ArrayList<>();
             geode.slice(slicingDirection.getAxis(), slice -> {
                 // Check for blocker marker block.
@@ -706,7 +696,7 @@ public class GeodesyCore {
     }
 
     private void buildWalls(IterableBlockBox wallsBox) {
-        for (Direction slicingDirection: Direction.values()) {
+        for (Direction slicingDirection : Direction.values()) {
             // Top wall (lid) is transparent but we still run the processing
             // to remove all blocks that should be removed.
             BlockState wallBlock = (slicingDirection == Direction.UP) ?
@@ -804,8 +794,8 @@ public class GeodesyCore {
 
     private void highlightGeode() {
         // Highlight the geode area.
-        int commandBlockOffset = WALL_OFFSET+1;
-        BlockPos structureBlockPos = new BlockPos(geode.getMinX()-commandBlockOffset, geode.getMinY()-commandBlockOffset, geode.getMinZ()-commandBlockOffset);
+        int commandBlockOffset = WALL_OFFSET + 1;
+        BlockPos structureBlockPos = new BlockPos(geode.getMinX() - commandBlockOffset, geode.getMinY() - commandBlockOffset, geode.getMinZ() - commandBlockOffset);
         BlockState structureBlockState = Blocks.STRUCTURE_BLOCK.getDefaultState().with(StructureBlock.MODE, StructureBlockMode.SAVE);
         world.setBlockState(structureBlockPos, structureBlockState, NOTIFY_LISTENERS);
         StructureBlockBlockEntity structure = (StructureBlockBlockEntity) world.getBlockEntity(structureBlockPos);
@@ -850,6 +840,7 @@ public class GeodesyCore {
      * Project the geode to a plane in a direction
      * Slices with budding amethyst(s) are marked with crying obsidian.
      * Slices with amethyst cluster(s) that needs to be harvested are marked with pumpkin.
+     *
      * @param direction The direction to project the geode to.
      * @author Kosma Moczek, Kevinthegreat
      */
@@ -879,7 +870,8 @@ public class GeodesyCore {
 
     /**
      * Get the position on the wall (with wall offset) of the geode bounding box for a position in a direction.
-     * @param blockPos The block position.
+     *
+     * @param blockPos  The block position.
      * @param direction The direction.
      * @return The position on the wall (with wall offset).
      * @author Kevinthegreat
@@ -956,8 +948,8 @@ public class GeodesyCore {
 
     private BlockPos buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
         // Platform
-        for (int i=0; i<6; i++)
-            for (int j=0; j<3; j++)
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 3; j++)
                 world.setBlockState(startPos.offset(directionMain, i).offset(directionSide, j), FULL_BLOCK.getDefaultState());
 
         // Four solid blocks

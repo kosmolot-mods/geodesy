@@ -38,7 +38,6 @@ public class IslandFaceSolver implements FaceSolver {
     private byte[][] grid;
     private int rows;
     private int cols;
-    private int totalCells;
     private double islandCost;
     private long timeoutMs;
     private long startTime;
@@ -82,7 +81,7 @@ public class IslandFaceSolver implements FaceSolver {
 
         rows = input.width();
         cols = input.height();
-        totalCells = rows * cols;
+        int totalCells = rows * cols;
         grid = input.copyCells();
 
         // Initialize state
@@ -382,10 +381,6 @@ public class IslandFaceSolver implements FaceSolver {
         // Option: skip this target
         // There are no valid shapes that cover this target
         backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, lShapeStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
-    }
-
-    private boolean hasColor(byte colors, byte material) {
-        return (colors & (1 << material)) != 0;
     }
 
     private boolean isAdjacent(BitSet lShapeStemMask, LShape newLShape) {
