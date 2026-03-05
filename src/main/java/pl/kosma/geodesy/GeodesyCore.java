@@ -21,14 +21,20 @@ import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.kosma.geodesy.solver.FaceGrid;
+import pl.kosma.geodesy.solver.IslandFaceSolver;
+import pl.kosma.geodesy.solver.SolverConfig;
+import pl.kosma.geodesy.solver.SolverResult;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -59,6 +65,11 @@ public class GeodesyCore {
     @Nullable
     // The following list must contain all amethyst clusters in the area.
     private List<Pair<BlockPos, Direction>> amethystClusterPositions;
+
+    // The directions used in the last /geodesy project command.
+    private Direction @Nullable [] lastProjectedDirections;
+    // Used to makes sure another solve doesn't start while one is already running.
+    private CompletableFuture<Void> solveFuture;
 
     public void geodesyGeodesy() {
         sendCommandFeedback("Welcome to Geodesy!");
@@ -95,12 +106,39 @@ public class GeodesyCore {
         }
     }
 
+    public void geodesyAnalyze() {
+        sendCommandFeedback("---");
+
+        // Return if geodesy area has not been run yet.
+        if (geode == null) {
+            sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
+            return;
+        }
+
+        // Run all possible projections and show the efficiencies.
+        sendCommandFeedback("Projection efficiency:");
+        geodesyProject(new Direction[]{Direction.EAST});
+        geodesyProject(new Direction[]{Direction.SOUTH});
+        geodesyProject(new Direction[]{Direction.UP});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.UP});
+        geodesyProject(new Direction[]{Direction.SOUTH, Direction.UP});
+        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH, Direction.UP});
+        // Clean up the results of the last projection.
+        geodesyProject(null);
+        // Advise the user.
+        sendCommandFeedback("Now run /geodesy project with your chosen projections.");
+    }
+
     void geodesyProject(Direction[] directions) {
         // Return if geodesy area has not been run yet.
         if (geode == null || buddingAmethystPositions == null || amethystClusterPositions == null) {
             sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
             return;
         }
+
+        // Store the directions for later use by /geodesy solve.
+        this.lastProjectedDirections = directions;
 
         // Expand the area and clear it out for work purposes.
         this.prepareWorkArea(true);
@@ -119,7 +157,7 @@ public class GeodesyCore {
 
 
         // Run the projection.
-        for (Direction direction: directions) {
+        for (Direction direction : directions) {
             this.projectGeode(direction);
         }
 
@@ -147,28 +185,302 @@ public class GeodesyCore {
         sendCommandFeedback(" %s: %d%% (%d/%d)", layoutName, (int) efficiency, clustersCollected, amethystClusterPositions.size());
     }
 
-    public void geodesyAnalyze() {
+    void geodesyProjectCommand(Direction[] directions) {
         sendCommandFeedback("---");
 
-        // Return if geodesy area has not been run yet.
+        geodesyProject(directions);
+
+        sendCommandFeedback("Now run /geodesy solve to find optimal slime/honey block placement for this layout.");
+        sendCommandFeedback("Alternatively, you can place blocks and skulls manually.");
+    }
+
+    // Solve for optimal slime/honey block placement. Must be run after /geodesy project.
+    void geodesySolve() {
+        geodesySolve(SolverConfig.defaults());
+    }
+
+    // Solve for optimal slime/honey block placement. Each face is solved in parallel.
+    void geodesySolve(SolverConfig config) {
+        sendCommandFeedback("---");
+
+        // Validate that we have the required state.
         if (geode == null) {
-            sendCommandFeedback("No area to analyze. Select an area with /geodesy area first.");
+            sendCommandFeedback("No geode detected. Run /geodesy area first.");
+            return;
+        }
+        if (lastProjectedDirections == null || lastProjectedDirections.length == 0) {
+            sendCommandFeedback("No projection found. Run /geodesy project first.");
             return;
         }
 
-        // Run all possible projections and show the efficiencies.
-        sendCommandFeedback("Projection efficiency:");
-        geodesyProject(new Direction[]{Direction.EAST});
-        geodesyProject(new Direction[]{Direction.SOUTH});
-        geodesyProject(new Direction[]{Direction.UP});
-        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH});
-        geodesyProject(new Direction[]{Direction.EAST, Direction.UP});
-        geodesyProject(new Direction[]{Direction.SOUTH, Direction.UP});
-        geodesyProject(new Direction[]{Direction.EAST, Direction.SOUTH, Direction.UP});
-        // Clean up the results of the last projection.
-        geodesyProject(null);
-        // Advise the user.
-        sendCommandFeedback("Now run /geodesy project with your chosen projections.");
+        // Clear any previous solver results (sticky blocks and mob heads)
+        for (Direction direction : lastProjectedDirections) {
+            clearSolverLayers(direction);
+        }
+
+        String directionNames = Arrays.stream(lastProjectedDirections).map(Direction::toString).collect(Collectors.joining(", "));
+        sendCommandFeedback("Solving %d face(s) in parallel: %s...", lastProjectedDirections.length, directionNames);
+
+        // Extract all face grids first (must be done on main thread for world access)
+        List<FaceGrid> faceGrids = new ArrayList<>(6);
+        for (Direction direction : lastProjectedDirections) {
+            FaceGrid faceGrid = extractFaceGrid(direction);
+            if (faceGrid != null) {
+                faceGrids.add(faceGrid);
+            } else {
+                sendCommandFeedback("  %s: Failed to extract face grid.", direction);
+            }
+        }
+
+        if (faceGrids.isEmpty()) {
+            sendCommandFeedback("No faces to solve.");
+            return;
+        }
+
+        if (solveFuture != null && !solveFuture.isDone()) {
+            sendCommandFeedback("Solve already in progress. Please wait for it to finish before starting another.");
+            return;
+        }
+
+        // Submit all solve tasks in parallel
+        @SuppressWarnings("rawtypes")
+        CompletableFuture[] futures = faceGrids.stream()
+                .map(faceGrid -> solveFace(config, faceGrid))
+                .toArray(CompletableFuture[]::new);
+
+        solveFuture = CompletableFuture.allOf(futures)
+                .thenRun(() -> world.getServer().execute(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready.")));
+    }
+
+    private @NonNull CompletableFuture<Void> solveFace(SolverConfig config, FaceGrid faceGrid) {
+        // Create a new solver instance for each face (thread safety)
+        return CompletableFuture.supplyAsync(() -> new IslandFaceSolver().solve(faceGrid, config))
+                .exceptionally(e -> {
+                    LOGGER.error("Failed to solve face {}", faceGrid.direction(), e);
+                    sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.direction(), e.getMessage());
+                    return SolverResult.empty(faceGrid);
+                })
+                .thenAccept(result -> world.getServer().execute(() -> {
+                    // Apply the solution to the world (must be on main thread)
+                    applySolverResult(result.direction(), result);
+
+                    // Report results
+                    sendCommandFeedback("  %s: %.0f%% coverage (%d/%d), %d blocks, %dms%s",
+                            result.direction(),
+                            result.getCoveragePercent(),
+                            result.harvestCovered(),
+                            result.totalHarvest(),
+                            result.getBlockCount(),
+                            result.solveTimeMs(),
+                            result.timedOut() ? " (timed out)" : ""
+                    );
+                }));
+    }
+
+    // Clears sticky blocks and mob heads for a face. Allows re-running /geodesy solve.
+    private void clearSolverLayers(Direction direction) {
+        if (geode == null) return;
+
+        // Calculate grid dimensions based on the direction
+        int width, height;
+        switch (direction.getAxis()) {
+            case X -> {
+                width = geode.getMaxZ() - geode.getMinZ() + 1;
+                height = geode.getMaxY() - geode.getMinY() + 1;
+            }
+            case Y -> {
+                width = geode.getMaxX() - geode.getMinX() + 1;
+                height = geode.getMaxZ() - geode.getMinZ() + 1;
+            }
+            case Z -> {
+                width = geode.getMaxX() - geode.getMinX() + 1;
+                height = geode.getMaxY() - geode.getMinY() + 1;
+            }
+            default -> {
+                return;
+            }
+        }
+
+        // Clear both layers (wall+1 for sticky blocks, wall+2 for mob heads)
+        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                setMutableToWallPos(mutablePos, direction, x, y);
+
+                // Clear sticky block layer (wall + 1)
+                mutablePos.move(direction, 1);
+                Block stickyBlock = world.getBlockState(mutablePos).getBlock();
+                if (STICKY_BLOCKS.contains(stickyBlock)) {
+                    world.setBlockState(mutablePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                }
+
+                // Clear mob head layer (wall + 2)
+                mutablePos.move(direction, 1);
+                Block headBlock = world.getBlockState(mutablePos).getBlock();
+                if (MARKERS_BLOCKER.contains(headBlock) || MARKERS_MACHINE.contains(headBlock)) {
+                    world.setBlockState(mutablePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                }
+            }
+        }
+    }
+
+    // Extracts a FaceGrid from the world. Reads wall blocks placed by /geodesy project.
+    @Nullable
+    private FaceGrid extractFaceGrid(Direction direction) {
+        if (geode == null) return null;
+
+        // Calculate grid dimensions based on the direction.
+        // For each direction, we need to map the wall to a 2D grid.
+        int width, height;
+        switch (direction.getAxis()) {
+            case X -> {
+                // East/West face: Z is width, Y is height
+                width = geode.getMaxZ() - geode.getMinZ() + 1;
+                height = geode.getMaxY() - geode.getMinY() + 1;
+            }
+            case Y -> {
+                // Up/Down face: X is width, Z is height
+                width = geode.getMaxX() - geode.getMinX() + 1;
+                height = geode.getMaxZ() - geode.getMinZ() + 1;
+            }
+            case Z -> {
+                // North/South face: X is width, Y is height
+                width = geode.getMaxX() - geode.getMinX() + 1;
+                height = geode.getMaxY() - geode.getMinY() + 1;
+            }
+            default -> {
+                return null;
+            }
+        }
+
+        FaceGrid grid = new FaceGrid(width, height, direction);
+
+        // Iterate through the wall and populate the grid.
+        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                setMutableToWallPos(mutablePos, direction, x, y);
+                Block block = world.getBlockState(mutablePos).getBlock();
+
+                byte cellValue;
+                if (block == Blocks.CRYING_OBSIDIAN) {
+                    cellValue = FaceGrid.CELL_BLOCKED;
+                } else if (block == Blocks.PUMPKIN) {
+                    cellValue = FaceGrid.CELL_HARVEST;
+                } else {
+                    cellValue = FaceGrid.CELL_AIR;
+                }
+                grid.setCell(x, y, cellValue);
+            }
+        }
+
+        return grid;
+    }
+
+    // Converts grid coordinates to world wall position.
+    private BlockPos.Mutable gridToWallPos(Direction direction, int gridX, int gridY) {
+        return switch (direction) {
+            case EAST -> new BlockPos.Mutable(
+                    geode.getMaxX() + WALL_OFFSET,
+                    geode.getMinY() + gridY,
+                    geode.getMinZ() + gridX);
+            case WEST -> new BlockPos.Mutable(
+                    geode.getMinX() - WALL_OFFSET,
+                    geode.getMinY() + gridY,
+                    geode.getMinZ() + gridX);
+            case UP -> new BlockPos.Mutable(
+                    geode.getMinX() + gridX,
+                    geode.getMaxY() + WALL_OFFSET,
+                    geode.getMinZ() + gridY);
+            case DOWN -> new BlockPos.Mutable(
+                    geode.getMinX() + gridX,
+                    geode.getMinY() - WALL_OFFSET,
+                    geode.getMinZ() + gridY);
+            case SOUTH -> new BlockPos.Mutable(
+                    geode.getMinX() + gridX,
+                    geode.getMinY() + gridY,
+                    geode.getMaxZ() + WALL_OFFSET);
+            case NORTH -> new BlockPos.Mutable(
+                    geode.getMinX() + gridX,
+                    geode.getMinY() + gridY,
+                    geode.getMinZ() - WALL_OFFSET);
+        };
+    }
+
+    // Sets a mutable BlockPos to the wall position for given grid coordinates.
+    private void setMutableToWallPos(BlockPos.Mutable pos, Direction direction, int gridX, int gridY) {
+        switch (direction) {
+            case EAST -> pos.set(geode.getMaxX() + WALL_OFFSET, geode.getMinY() + gridY, geode.getMinZ() + gridX);
+            case WEST -> pos.set(geode.getMinX() - WALL_OFFSET, geode.getMinY() + gridY, geode.getMinZ() + gridX);
+            case UP -> pos.set(geode.getMinX() + gridX, geode.getMaxY() + WALL_OFFSET, geode.getMinZ() + gridY);
+            case DOWN -> pos.set(geode.getMinX() + gridX, geode.getMinY() - WALL_OFFSET, geode.getMinZ() + gridY);
+            case SOUTH -> pos.set(geode.getMinX() + gridX, geode.getMinY() + gridY, geode.getMaxZ() + WALL_OFFSET);
+            case NORTH -> pos.set(geode.getMinX() + gridX, geode.getMinY() + gridY, geode.getMinZ() - WALL_OFFSET);
+        }
+    }
+
+    // Applies solver result: places slime/honey blocks and mob heads.
+    private void applySolverResult(Direction direction, SolverResult result) {
+        // Place sticky blocks for each cell
+        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
+        for (int x = 0; x < result.width(); x++) {
+            for (int y = 0; y < result.height(); y++) {
+                byte placement = result.getPlacement(x, y);
+                if (placement == 0) {
+                    continue;
+                }
+
+                // Calculate the position one block outside the wall (where sticky blocks go).
+                setMutableToWallPos(mutablePos, direction, x, y);
+                mutablePos.move(direction, 1);
+
+                Block blockToPlace = switch (placement) {
+                    case IslandFaceSolver.SLIME -> Blocks.SLIME_BLOCK;
+                    case IslandFaceSolver.HONEY -> Blocks.HONEY_BLOCK;
+                    default -> null;
+                };
+
+                if (blockToPlace != null) {
+                    world.setBlockState(mutablePos, blockToPlace.getDefaultState(), NOTIFY_LISTENERS);
+                }
+            }
+        }
+
+        // Place mob heads for each island
+        for (IslandFaceSolver.Island island : result.islands()) {
+            placeMobHeadsForIsland(direction, island);
+        }
+    }
+
+    // Places mob heads in L-shape pattern: 3 zombie heads + 1 wither skeleton skull.
+    // Uses the pre-computed L-shape data from the solver result.
+    private void placeMobHeadsForIsland(Direction direction, IslandFaceSolver.Island island) {
+        if (island.lShape() == null || island.lShape().stemCells() == null || island.lShape().stemCells().size() != 3) {
+            LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.lShape(), island);
+            sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.lShape(), island);
+            return;
+        }
+
+        // Place zombie heads on stem cells, wither skeleton skull on corner
+        for (int cell : island.lShape().stemCells()) {
+            BlockPos headPos = gridToWallPos(direction, IslandFaceSolver.keyRow(cell), IslandFaceSolver.keyCol(cell)).move(direction, 2);
+            placeSkull(headPos, Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, direction);
+        }
+
+        int stopperCell = island.lShape().stopperCell();
+        BlockPos stopperPos = gridToWallPos(direction, IslandFaceSolver.keyRow(stopperCell), IslandFaceSolver.keyCol(stopperCell)).move(direction, 2);
+        placeSkull(stopperPos, Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, direction);
+    }
+
+    // Places a skull: wall variant for horizontal faces, floor variant for up/down.
+    private void placeSkull(BlockPos pos, Block floorVariant, Block wallVariant, Direction faceDirection) {
+        if (faceDirection == Direction.UP || faceDirection == Direction.DOWN) {
+            // Floor variant for up/down faces
+            world.setBlockState(pos, floorVariant.getDefaultState(), NOTIFY_LISTENERS);
+        } else {
+            // Wall variant for horizontal faces
+            world.setBlockState(pos, wallVariant.getDefaultState().with(Properties.HORIZONTAL_FACING, faceDirection), NOTIFY_LISTENERS);
+        }
     }
 
     void geodesyAssemble() {
@@ -179,11 +491,11 @@ public class GeodesyCore {
         }
 
         // Plop the clock at the top
-        BlockPos clockPos = new BlockPos((geode.getMinX()+geode.getMaxX())/2+3, geode.getMaxY()+CLOCK_Y_OFFSET, (geode.getMinZ()+geode.getMaxZ())/2+1);
+        BlockPos clockPos = new BlockPos((geode.getMinX() + geode.getMaxX()) / 2 + 3, geode.getMaxY() + CLOCK_Y_OFFSET, (geode.getMinZ() + geode.getMaxZ()) / 2 + 1);
         BlockPos torchPos = buildClock(clockPos, Direction.WEST, Direction.NORTH);
 
         // Run along all the axes and move all slime/honey blocks inside the frame.
-        for (Direction direction: Direction.values()) {
+        for (Direction direction : Direction.values()) {
             geode.slice(direction.getAxis(), slice -> {
                 // Calculate positions of the source and target blocks for moving.
                 BlockPos targetPos = slice.getEndpoint(direction).offset(direction, WALL_OFFSET);
@@ -198,7 +510,7 @@ public class GeodesyCore {
         }
 
         // Check each slice for a marker block.
-        for (Direction slicingDirection: Direction.values()) {
+        for (Direction slicingDirection : Direction.values()) {
             List<BlockPos> triggerObserverPositions = new ArrayList<>();
             geode.slice(slicingDirection.getAxis(), slice -> {
                 // Check for blocker marker block.
@@ -384,7 +696,7 @@ public class GeodesyCore {
     }
 
     private void buildWalls(IterableBlockBox wallsBox) {
-        for (Direction slicingDirection: Direction.values()) {
+        for (Direction slicingDirection : Direction.values()) {
             // Top wall (lid) is transparent but we still run the processing
             // to remove all blocks that should be removed.
             BlockState wallBlock = (slicingDirection == Direction.UP) ?
@@ -482,8 +794,8 @@ public class GeodesyCore {
 
     private void highlightGeode() {
         // Highlight the geode area.
-        int commandBlockOffset = WALL_OFFSET+1;
-        BlockPos structureBlockPos = new BlockPos(geode.getMinX()-commandBlockOffset, geode.getMinY()-commandBlockOffset, geode.getMinZ()-commandBlockOffset);
+        int commandBlockOffset = WALL_OFFSET + 1;
+        BlockPos structureBlockPos = new BlockPos(geode.getMinX() - commandBlockOffset, geode.getMinY() - commandBlockOffset, geode.getMinZ() - commandBlockOffset);
         BlockState structureBlockState = Blocks.STRUCTURE_BLOCK.getDefaultState().with(StructureBlock.MODE, StructureBlockMode.SAVE);
         world.setBlockState(structureBlockPos, structureBlockState, NOTIFY_LISTENERS);
         StructureBlockBlockEntity structure = (StructureBlockBlockEntity) world.getBlockEntity(structureBlockPos);
@@ -528,6 +840,7 @@ public class GeodesyCore {
      * Project the geode to a plane in a direction
      * Slices with budding amethyst(s) are marked with crying obsidian.
      * Slices with amethyst cluster(s) that needs to be harvested are marked with pumpkin.
+     *
      * @param direction The direction to project the geode to.
      * @author Kosma Moczek, Kevinthegreat
      */
@@ -557,7 +870,8 @@ public class GeodesyCore {
 
     /**
      * Get the position on the wall (with wall offset) of the geode bounding box for a position in a direction.
-     * @param blockPos The block position.
+     *
+     * @param blockPos  The block position.
      * @param direction The direction.
      * @return The position on the wall (with wall offset).
      * @author Kevinthegreat
@@ -634,8 +948,8 @@ public class GeodesyCore {
 
     private BlockPos buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
         // Platform
-        for (int i=0; i<6; i++)
-            for (int j=0; j<3; j++)
+        for (int i = 0; i < 6; i++)
+            for (int j = 0; j < 3; j++)
                 world.setBlockState(startPos.offset(directionMain, i).offset(directionSide, j), FULL_BLOCK.getDefaultState());
 
         // Four solid blocks
@@ -724,7 +1038,7 @@ public class GeodesyCore {
     private WeakReference<ServerPlayerEntity> player;
 
     public void setPlayerEntity(ServerPlayerEntity player) {
-        this.player = new WeakReference<>(player);
+        if (this.player == null || this.player.get() != player) this.player = new WeakReference<>(player);
     }
 
     private void sendCommandFeedback(Text message) {

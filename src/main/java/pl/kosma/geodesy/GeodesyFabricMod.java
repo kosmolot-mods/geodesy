@@ -1,5 +1,7 @@
 package pl.kosma.geodesy;
 
+import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry;
@@ -16,6 +18,7 @@ import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.kosma.geodesy.solver.SolverConfig;
 
 import java.util.*;
 
@@ -142,6 +145,52 @@ public class GeodesyFabricMod implements ModInitializer {
                                 .executes(context -> geodesyProjectCommand(context,2)))
                             .executes(context -> geodesyProjectCommand(context,1)))
                         .executes(context -> geodesyProjectCommand(context,0)))
+                    .then(literal("solve")
+                        .then(argument("timeout", IntegerArgumentType.integer(1, 300))
+                            .then(argument("cost", DoubleArgumentType.doubleArg(1.0, 12.0))
+                                .executes(context -> {
+                                    try {
+                                        GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                                        int timeout = IntegerArgumentType.getInteger(context, "timeout");
+                                        double cost = DoubleArgumentType.getDouble(context, "cost");
+                                        SolverConfig config = SolverConfig.builder()
+                                                .timeoutMs(timeout * 1000L)
+                                                .costThreshold(cost)
+                                                .build();
+                                        context.getSource().getServer().execute(() -> core.geodesySolve(config));
+                                        return SINGLE_SUCCESS;
+                                    }
+                                    catch (Exception e) {
+                                        LOGGER.error("solve", e);
+                                        throw (e);
+                                    }
+                                }))
+                            .executes(context -> {
+                                try {
+                                    GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                                    int timeout = IntegerArgumentType.getInteger(context, "timeout");
+                                    SolverConfig config = SolverConfig.builder()
+                                            .timeoutMs(timeout * 1000L)
+                                            .build();
+                                    context.getSource().getServer().execute(() -> core.geodesySolve(config));
+                                    return SINGLE_SUCCESS;
+                                }
+                                catch (Exception e) {
+                                    LOGGER.error("solve", e);
+                                    throw (e);
+                                }
+                            }))
+                        .executes(context -> {
+                            try {
+                                GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
+                                context.getSource().getServer().execute(core::geodesySolve);
+                                return SINGLE_SUCCESS;
+                            }
+                            catch (Exception e) {
+                                LOGGER.error("solve", e);
+                                throw (e);
+                            }
+                        }))
                     .then(literal("assemble").executes(context -> {
                         try {
                             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
@@ -171,11 +220,11 @@ public class GeodesyFabricMod implements ModInitializer {
     private int geodesyProjectCommand(CommandContext<ServerCommandSource> context, int argumentIndex) {
         try {
             GeodesyCore core = getPerPlayerCore(context.getSource().getPlayer());
-            Set<Direction> directions = new LinkedHashSet<>(argumentIndex);
+            Direction[] directions = new Direction[argumentIndex];
             for (int i = 1; i <= argumentIndex; i++) {
-                directions.add(DirectionArgumentType.getDirection(context, "direction" + i));
+                directions[i - 1] = DirectionArgumentType.getDirection(context, "direction" + i);
             }
-            context.getSource().getServer().execute(() -> core.geodesyProject(directions.isEmpty() ? null : directions.toArray(new Direction[argumentIndex])));
+            context.getSource().getServer().execute(() -> core.geodesyProjectCommand(directions));
             return SINGLE_SUCCESS;
         } catch (Exception e) {
             LOGGER.error("project", e);
