@@ -12,6 +12,7 @@ import net.minecraft.block.enums.StructureBlockMode;
 import net.minecraft.block.enums.WireConnection;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.state.property.Properties;
@@ -20,6 +21,7 @@ import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockBox;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -99,10 +101,10 @@ public class GeodesyCore {
 
         // Detect the geode area.
         detectGeode(startPos, endPos);
-        if (geode != null) {
-            prepareWorkArea(true);
-            countClusters();
-            highlightGeode();
+        if (geode != null && buddingAmethystPositions != null) {
+            prepareWorkArea(geode, true);
+            countClusters(buddingAmethystPositions);
+            highlightGeode(geode);
         }
     }
 
@@ -141,10 +143,10 @@ public class GeodesyCore {
         this.lastProjectedDirections = directions;
 
         // Expand the area and clear it out for work purposes.
-        this.prepareWorkArea(true);
+        this.prepareWorkArea(geode, true);
 
         // Grow and count all amethyst (for efficiency calculation).
-        this.growClusters();
+        this.growClusters(amethystClusterPositions);
 
         // Render a frame.
         IterableBlockBox frameBoundingBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
@@ -158,7 +160,7 @@ public class GeodesyCore {
 
         // Run the projection.
         for (Direction direction : directions) {
-            this.projectGeode(direction);
+            this.projectGeode(geode, buddingAmethystPositions, amethystClusterPositions, direction);
         }
 
         // Replace all remaining amethyst clusters with buttons so items can't
@@ -177,7 +179,7 @@ public class GeodesyCore {
         int clustersCollected = amethystClusterPositions.size() - clustersLeft.get();
 
         // Re-grow the buds so they are visible.
-        this.growClusters();
+        this.growClusters(amethystClusterPositions);
 
         // Calculate and show layout efficiency.
         float efficiency = 100f * (clustersCollected) / amethystClusterPositions.size();
@@ -203,6 +205,12 @@ public class GeodesyCore {
     void geodesySolve(SolverConfig config) {
         sendCommandFeedback("---");
 
+        MinecraftServer server = world.getServer();
+        if (server == null) {
+            sendCommandFeedback("Server instance not found. Are you sure you're running this on the server?");
+            return;
+        }
+
         // Validate that we have the required state.
         if (geode == null) {
             sendCommandFeedback("No geode detected. Run /geodesy area first.");
@@ -215,7 +223,7 @@ public class GeodesyCore {
 
         // Clear any previous solver results (sticky blocks and mob heads)
         for (Direction direction : lastProjectedDirections) {
-            clearSolverLayers(direction);
+            clearSolverLayers(geode, direction);
         }
 
         String directionNames = Arrays.stream(lastProjectedDirections).map(Direction::toString).collect(Collectors.joining(", "));
@@ -224,7 +232,7 @@ public class GeodesyCore {
         // Extract all face grids first (must be done on main thread for world access)
         List<FaceGrid> faceGrids = new ArrayList<>(6);
         for (Direction direction : lastProjectedDirections) {
-            FaceGrid faceGrid = extractFaceGrid(direction);
+            FaceGrid faceGrid = extractFaceGrid(geode, direction);
             if (faceGrid != null) {
                 faceGrids.add(faceGrid);
             } else {
@@ -245,14 +253,14 @@ public class GeodesyCore {
         // Submit all solve tasks in parallel
         @SuppressWarnings("rawtypes")
         CompletableFuture[] futures = faceGrids.stream()
-                .map(faceGrid -> solveFace(config, faceGrid))
+                .map(faceGrid -> solveFace(server, geode, config, faceGrid))
                 .toArray(CompletableFuture[]::new);
 
         solveFuture = CompletableFuture.allOf(futures)
-                .thenRun(() -> world.getServer().execute(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready.")));
+                .thenRun(() -> server.execute(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready.")));
     }
 
-    private @NonNull CompletableFuture<Void> solveFace(SolverConfig config, FaceGrid faceGrid) {
+    private @NonNull CompletableFuture<Void> solveFace(@NotNull MinecraftServer server, @NotNull IterableBlockBox geode, SolverConfig config, FaceGrid faceGrid) {
         // Create a new solver instance for each face (thread safety)
         return CompletableFuture.supplyAsync(() -> new IslandFaceSolver().solve(faceGrid, config))
                 .exceptionally(e -> {
@@ -260,9 +268,9 @@ public class GeodesyCore {
                     sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.direction(), e.getMessage());
                     return SolverResult.empty(faceGrid);
                 })
-                .thenAccept(result -> world.getServer().execute(() -> {
+                .thenAccept(result -> server.execute(() -> {
                     // Apply the solution to the world (must be on main thread)
-                    applySolverResult(result.direction(), result);
+                    applySolverResult(geode, result.direction(), result);
 
                     // Report results
                     sendCommandFeedback("  %s: %.0f%% coverage (%d/%d), %d blocks, %dms%s",
@@ -278,9 +286,7 @@ public class GeodesyCore {
     }
 
     // Clears sticky blocks and mob heads for a face. Allows re-running /geodesy solve.
-    private void clearSolverLayers(Direction direction) {
-        if (geode == null) return;
-
+    private void clearSolverLayers(@NotNull IterableBlockBox geode, Direction direction) {
         // Calculate grid dimensions based on the direction
         int width, height;
         switch (direction.getAxis()) {
@@ -305,7 +311,7 @@ public class GeodesyCore {
         BlockPos.Mutable mutablePos = new BlockPos.Mutable();
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
-                setMutableToWallPos(mutablePos, direction, x, y);
+                setMutableToWallPos(geode, mutablePos, direction, x, y);
 
                 // Clear sticky block layer (wall + 1)
                 mutablePos.move(direction, 1);
@@ -326,9 +332,7 @@ public class GeodesyCore {
 
     // Extracts a FaceGrid from the world. Reads wall blocks placed by /geodesy project.
     @Nullable
-    private FaceGrid extractFaceGrid(Direction direction) {
-        if (geode == null) return null;
-
+    private FaceGrid extractFaceGrid(@NotNull IterableBlockBox geode, Direction direction) {
         // Calculate grid dimensions based on the direction.
         // For each direction, we need to map the wall to a 2D grid.
         int width, height;
@@ -359,7 +363,7 @@ public class GeodesyCore {
         BlockPos.Mutable mutablePos = new BlockPos.Mutable();
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
-                setMutableToWallPos(mutablePos, direction, x, y);
+                setMutableToWallPos(geode, mutablePos, direction, x, y);
                 Block block = world.getBlockState(mutablePos).getBlock();
 
                 byte cellValue;
@@ -378,7 +382,7 @@ public class GeodesyCore {
     }
 
     // Converts grid coordinates to world wall position.
-    private BlockPos.Mutable gridToWallPos(Direction direction, int gridX, int gridY) {
+    private static BlockPos.Mutable gridToWallPos(@NotNull IterableBlockBox geode, Direction direction, int gridX, int gridY) {
         return switch (direction) {
             case EAST -> new BlockPos.Mutable(
                     geode.getMaxX() + WALL_OFFSET,
@@ -408,7 +412,7 @@ public class GeodesyCore {
     }
 
     // Sets a mutable BlockPos to the wall position for given grid coordinates.
-    private void setMutableToWallPos(BlockPos.Mutable pos, Direction direction, int gridX, int gridY) {
+    private static void setMutableToWallPos(@NotNull IterableBlockBox geode, BlockPos.Mutable pos, Direction direction, int gridX, int gridY) {
         switch (direction) {
             case EAST -> pos.set(geode.getMaxX() + WALL_OFFSET, geode.getMinY() + gridY, geode.getMinZ() + gridX);
             case WEST -> pos.set(geode.getMinX() - WALL_OFFSET, geode.getMinY() + gridY, geode.getMinZ() + gridX);
@@ -420,7 +424,7 @@ public class GeodesyCore {
     }
 
     // Applies solver result: places slime/honey blocks and mob heads.
-    private void applySolverResult(Direction direction, SolverResult result) {
+    private void applySolverResult(@NotNull IterableBlockBox geode, Direction direction, SolverResult result) {
         // Place sticky blocks for each cell
         BlockPos.Mutable mutablePos = new BlockPos.Mutable();
         for (int x = 0; x < result.width(); x++) {
@@ -431,7 +435,7 @@ public class GeodesyCore {
                 }
 
                 // Calculate the position one block outside the wall (where sticky blocks go).
-                setMutableToWallPos(mutablePos, direction, x, y);
+                setMutableToWallPos(geode, mutablePos, direction, x, y);
                 mutablePos.move(direction, 1);
 
                 Block blockToPlace = switch (placement) {
@@ -448,13 +452,13 @@ public class GeodesyCore {
 
         // Place mob heads for each island
         for (IslandFaceSolver.Island island : result.islands()) {
-            placeMobHeadsForIsland(direction, island);
+            placeMobHeadsForIsland(geode, direction, island);
         }
     }
 
     // Places mob heads in L-shape pattern: 3 zombie heads + 1 wither skeleton skull.
     // Uses the pre-computed L-shape data from the solver result.
-    private void placeMobHeadsForIsland(Direction direction, IslandFaceSolver.Island island) {
+    private void placeMobHeadsForIsland(@NotNull IterableBlockBox geode, Direction direction, IslandFaceSolver.Island island) {
         if (island.lShape() == null || island.lShape().stemCells() == null || island.lShape().stemCells().size() != 3) {
             LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.lShape(), island);
             sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.lShape(), island);
@@ -463,12 +467,12 @@ public class GeodesyCore {
 
         // Place zombie heads on stem cells, wither skeleton skull on corner
         for (int cell : island.lShape().stemCells()) {
-            BlockPos headPos = gridToWallPos(direction, IslandFaceSolver.keyRow(cell), IslandFaceSolver.keyCol(cell)).move(direction, 2);
+            BlockPos headPos = gridToWallPos(geode, direction, IslandFaceSolver.keyRow(cell), IslandFaceSolver.keyCol(cell)).move(direction, 2);
             placeSkull(headPos, Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, direction);
         }
 
         int stopperCell = island.lShape().stopperCell();
-        BlockPos stopperPos = gridToWallPos(direction, IslandFaceSolver.keyRow(stopperCell), IslandFaceSolver.keyCol(stopperCell)).move(direction, 2);
+        BlockPos stopperPos = gridToWallPos(geode, direction, IslandFaceSolver.keyRow(stopperCell), IslandFaceSolver.keyCol(stopperCell)).move(direction, 2);
         placeSkull(stopperPos, Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, direction);
     }
 
@@ -604,7 +608,7 @@ public class GeodesyCore {
             // Create a list of all needed scaffolding positions in this slice.
             List<BlockPos> scaffoldingPositions = observerPositions.stream()
                     // Extract all the observers belonging to the current slice
-                    .filter(blockPos -> observersBox.contains(blockPos))
+                    .filter(observersBox::contains)
                     // Offset them all one block out, to become needed scaffolding positions
                     .map(blockPos -> blockPos.offset(slicingDirection))
                     .collect(Collectors.toList());
@@ -644,16 +648,16 @@ public class GeodesyCore {
                 world.setBlockState(triggerPos.offset(slicingDirection, 2).offset(Direction.UP, -1), Blocks.TARGET.getDefaultState(), NOTIFY_LISTENERS);
                 world.setBlockState(triggerPos.offset(slicingDirection, 2).offset(Direction.UP, 0), Blocks.SCAFFOLDING.getDefaultState().with(ScaffoldingBlock.DISTANCE, 0), NOTIFY_LISTENERS);
                 IterableBlockBox scaffoldingBox = new IterableBlockBox(BlockBox.encompassPositions(scaffoldingPositions).orElseThrow());
-                scaffoldingBox.forEachPosition(scaffoldingPos -> {
-                    world.setBlockState(scaffoldingPos, Blocks.SCAFFOLDING.getDefaultState().with(ScaffoldingBlock.DISTANCE, 0), NOTIFY_LISTENERS);
-                });
+                scaffoldingBox.forEachPosition(scaffoldingPos ->
+                        world.setBlockState(scaffoldingPos, Blocks.SCAFFOLDING.getDefaultState().with(ScaffoldingBlock.DISTANCE, 0), NOTIFY_LISTENERS)
+                );
             }
         });
 
         // Place all the observers last, so they don't trigger.
-        observerPositions.forEach(observerPos -> {
-            world.setBlockState(observerPos, Blocks.OBSERVER.getDefaultState().with(Properties.FACING, slicingDirection), NOTIFY_LISTENERS);
-        });
+        observerPositions.forEach(observerPos ->
+                world.setBlockState(observerPos, Blocks.OBSERVER.getDefaultState().with(Properties.FACING, slicingDirection), NOTIFY_LISTENERS)
+        );
     }
 
     private void buildTriggerWiringUp(List<BlockPos> observerPositions, BlockPos torchPos) {
@@ -667,11 +671,10 @@ public class GeodesyCore {
         List<IterableBlockBox> lines = new ArrayList<>();
 
         // The Z lines are per-observer.
-        observerPositions.forEach(blockPos -> {
-            lines.add(new IterableBlockBox(
+        observerPositions.forEach(blockPos -> lines.add(new IterableBlockBox(
                 blockPos.getX(), blockPos.getY(), blockPos.getZ(),
-                blockPos.getX(), blockPos.getY(), torchPos.getZ()));
-        });
+                blockPos.getX(), blockPos.getY(), torchPos.getZ())
+        ));
 
         // The X axis line needs to connect to the trigger position area - add it.
         // It's okay to modify it here, as no other code uses it.
@@ -683,21 +686,19 @@ public class GeodesyCore {
         lines.add(xLine);
 
         // Create all the lines with redstone dust on top.
-        lines.forEach(blockBox -> {
-            blockBox.forEachPosition(blockPos -> {
-                // Place a solid block if it's not already there.
-                if (world.getBlockState(blockPos).getBlock() == Blocks.AIR)
-                    world.setBlockState(blockPos, FULL_BLOCK.getDefaultState());
-                // Place redstone dust on top if it's not already there.
-                if (world.getBlockState(blockPos.offset(Direction.UP)).getBlock() == Blocks.AIR)
-                    world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
-            });
-        });
+        lines.forEach(blockBox -> blockBox.forEachPosition(blockPos -> {
+            // Place a solid block if it's not already there.
+            if (world.getBlockState(blockPos).getBlock() == Blocks.AIR)
+                world.setBlockState(blockPos, FULL_BLOCK.getDefaultState());
+            // Place redstone dust on top if it's not already there.
+            if (world.getBlockState(blockPos.offset(Direction.UP)).getBlock() == Blocks.AIR)
+                world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
+        }));
     }
 
     private void buildWalls(IterableBlockBox wallsBox) {
         for (Direction slicingDirection : Direction.values()) {
-            // Top wall (lid) is transparent but we still run the processing
+            // Top wall (lid) is transparent, but we still run the processing
             // to remove all blocks that should be removed.
             BlockState wallBlock = (slicingDirection == Direction.UP) ?
                     Blocks.AIR.getDefaultState() :
@@ -710,7 +711,8 @@ public class GeodesyCore {
         }
     }
 
-    private void prepareWorkArea(boolean force) {
+    @SuppressWarnings("SameParameterValue")
+    private void prepareWorkArea(@NotNull IterableBlockBox geode, boolean force) {
         IterableBlockBox workBoundingBox = new IterableBlockBox(geode.expand(BUILD_MARGIN));
         BlockPos commandBlockPos = new BlockPos(workBoundingBox.getMaxX(), workBoundingBox.getMaxY(), workBoundingBox.getMaxZ());
 
@@ -733,7 +735,7 @@ public class GeodesyCore {
                 world.setBlockState(blockPos, WORK_AREA_WALL.getDefaultState(), NOTIFY_LISTENERS);
         });
 
-        // Add a command block to allow the player to reeexecute the command easily.
+        // Add a command block to allow the player to reexecute the command easily.
         String resumeCommand = String.format("/geodesy area %d %d %d %d %d %d",
                 geode.getMinX(), geode.getMinY(), geode.getMinZ(), geode.getMaxX(), geode.getMaxY(), geode.getMaxZ());
 
@@ -792,7 +794,7 @@ public class GeodesyCore {
         geode = new IterableBlockBox(minX.get(), minY.get(), minZ.get(), maxX.get(), maxY.get(), maxZ.get()).expand(1);
     }
 
-    private void highlightGeode() {
+    private void highlightGeode(@NotNull IterableBlockBox geode) {
         // Highlight the geode area.
         int commandBlockOffset = WALL_OFFSET + 1;
         BlockPos structureBlockPos = new BlockPos(geode.getMinX() - commandBlockOffset, geode.getMinY() - commandBlockOffset, geode.getMinZ() - commandBlockOffset);
@@ -813,7 +815,7 @@ public class GeodesyCore {
     /**
      * Count all possible clusters from each budding block.
      */
-    private void countClusters() {
+    private void countClusters(@NotNull List<BlockPos> buddingAmethystPositions) {
         amethystClusterPositions = new ArrayList<>();
         buddingAmethystPositions.forEach(blockPos -> {
             for (Direction direction : Direction.values()) {
@@ -828,7 +830,7 @@ public class GeodesyCore {
     /**
      * Set all the clusters positions to cluster blocks if it is currently air.
      */
-    private void growClusters() {
+    private void growClusters(@NotNull List<Pair<BlockPos, Direction>> amethystClusterPositions) {
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
             if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AIR) {
                 world.setBlockState(blockPosDirectionPair.getLeft(), Blocks.AMETHYST_CLUSTER.getDefaultState().with(AmethystClusterBlock.FACING, blockPosDirectionPair.getRight()));
@@ -844,24 +846,24 @@ public class GeodesyCore {
      * @param direction The direction to project the geode to.
      * @author Kosma Moczek, Kevinthegreat
      */
-    private void projectGeode(Direction direction) {
+    private void projectGeode(@NotNull IterableBlockBox geode, List<BlockPos> buddingAmethystPositions, List<Pair<BlockPos, Direction>> amethystClusterPositions, Direction direction) {
         // Mark wall for slices with budding amethysts.
         buddingAmethystPositions.forEach(blockPos -> {
-            BlockPos wallPos = getWallPos(blockPos, direction);
+            BlockPos wallPos = getWallPos(geode, blockPos, direction);
             world.setBlockState(wallPos, Blocks.CRYING_OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
         });
         // Mark wall for slices that needs to be harvested and have no budding amethysts.
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
             // Check if the cluster is harvested.
             if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AMETHYST_CLUSTER) {
-                BlockPos wallPos = getWallPos(blockPosDirectionPair.getLeft(), direction);
-                BlockPos oppositeWallPos = getWallPos(blockPosDirectionPair.getLeft(), direction.getOpposite());
+                BlockPos wallPos = getWallPos(geode, blockPosDirectionPair.getLeft(), direction);
+                BlockPos oppositeWallPos = getWallPos(geode, blockPosDirectionPair.getLeft(), direction.getOpposite());
                 // Check if the slice is marked with budding amethyst.
                 if (world.getBlockState(wallPos).getBlock() != Blocks.CRYING_OBSIDIAN) {
                     // Mark all clusters in the slice as harvested.
-                    BlockPos.iterate(wallPos, oppositeWallPos).forEach(pos -> {
-                        world.setBlockState(pos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
-                    });
+                    BlockPos.iterate(wallPos, oppositeWallPos).forEach(pos ->
+                            world.setBlockState(pos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS)
+                    );
                     world.setBlockState(wallPos, Blocks.PUMPKIN.getDefaultState(), NOTIFY_LISTENERS);
                 }
             }
@@ -876,7 +878,7 @@ public class GeodesyCore {
      * @return The position on the wall (with wall offset).
      * @author Kevinthegreat
      */
-    private BlockPos getWallPos(BlockPos blockPos, Direction direction) {
+    private static BlockPos getWallPos(@NotNull IterableBlockBox geode, BlockPos blockPos, Direction direction) {
         return switch (direction) {
             case EAST -> new BlockPos(geode.getMaxX() + WALL_OFFSET, blockPos.getY(), blockPos.getZ());
             case WEST -> new BlockPos(geode.getMinX() - WALL_OFFSET, blockPos.getY(), blockPos.getZ());
@@ -946,6 +948,7 @@ public class GeodesyCore {
         return pos.offset(directionUp, 1);
     }
 
+    @SuppressWarnings("SameParameterValue")
     private BlockPos buildClock(BlockPos startPos, Direction directionMain, Direction directionSide) {
         // Platform
         for (int i = 0; i < 6; i++)
