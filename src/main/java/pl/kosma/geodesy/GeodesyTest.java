@@ -15,32 +15,44 @@ public class GeodesyTest {
         CommandManager commandManager = server.getCommandManager();
         ServerCommandSource commandSource = server.getCommandSource();
 
+        commandManager.parseAndExecute(commandSource, "/gamerule random_tick_speed 0");
+
         BlockPos absolutePos = context.getAbsolutePos(new BlockPos(18, 18, 18));
         commandManager.parseAndExecute(commandSource, "/geodesy area " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ() + " " + absolutePos.getX() + " " + absolutePos.getY() + " " + absolutePos.getZ());
         commandManager.parseAndExecute(commandSource, "/geodesy analyze");
         commandManager.parseAndExecute(commandSource, "/geodesy project north east down");
 
-        new IterableBlockBox(17, 17, 14, 19, 19, 14).forEachEdgePosition(pos -> context.setBlockState(pos, Blocks.SLIME_BLOCK));
-        context.setBlockState(19, 17, 13, Blocks.ZOMBIE_WALL_HEAD);
-        context.setBlockState(19, 18, 13, Blocks.ZOMBIE_WALL_HEAD);
-        context.setBlockState(19, 19, 13, Blocks.ZOMBIE_WALL_HEAD);
-        context.setBlockState(18, 17, 13, Blocks.WITHER_SKELETON_WALL_SKULL);
+        commandManager.parseAndExecute(commandSource, "/geodesy solve");
+        context.waitAndRun(100, () -> {
+            context.expectBlock(Blocks.ZOMBIE_WALL_HEAD, 17, 17, 13);
+            context.expectBlock(Blocks.ZOMBIE_WALL_HEAD, 17, 18, 13);
+            context.expectBlock(Blocks.ZOMBIE_WALL_HEAD, 17, 19, 13);
+            context.expectBlock(Blocks.WITHER_SKELETON_WALL_SKULL, 18, 17, 13);
 
-        new IterableBlockBox(22, 17, 17, 22, 19, 19).forEachEdgePosition(pos -> context.setBlockState(pos, Blocks.SLIME_BLOCK));
-        context.setBlockState(23, 17, 19, Blocks.ZOMBIE_WALL_HEAD);
-        context.setBlockState(23, 18, 19, Blocks.ZOMBIE_WALL_HEAD);
-        context.setBlockState(23, 19, 19, Blocks.ZOMBIE_WALL_HEAD);
-        context.setBlockState(23, 17, 18, Blocks.WITHER_SKELETON_WALL_SKULL);
+            context.expectBlock(Blocks.ZOMBIE_WALL_HEAD, 23, 17, 17);
+            context.expectBlock(Blocks.ZOMBIE_WALL_HEAD, 23, 17, 18);
+            context.expectBlock(Blocks.ZOMBIE_WALL_HEAD, 23, 17, 19);
+            context.expectBlock(Blocks.WITHER_SKELETON_WALL_SKULL, 23, 18, 17);
 
-        commandManager.parseAndExecute(commandSource, "/geodesy assemble");
-        context.putAndRemoveRedstoneBlock(new BlockPos(19, 17, 2), 1);
-        context.waitAndRun(150, () -> context.putAndRemoveRedstoneBlock(new BlockPos(34, 17, 19), 1));
-        context.waitAndRun(300, () -> {
-            new IterableBlockBox(17, 17, 15, 19, 19, 15).forEachEdgePosition(pos -> context.expectBlock(Blocks.SLIME_BLOCK, pos));
-            new IterableBlockBox(21, 17, 17, 21, 19, 19).forEachEdgePosition(pos -> context.expectBlock(Blocks.SLIME_BLOCK, pos));
-            context.expectBlock(Blocks.REDSTONE_LAMP, 19, 17, 12);
-            context.expectBlock(Blocks.REDSTONE_LAMP, 24, 17, 19);
+            commandManager.parseAndExecute(commandSource, "/geodesy assemble");
+            context.putAndRemoveRedstoneBlock(new BlockPos(17, 17, 2), 1);
+        });
+
+        context.waitAndRun(250, () -> context.putAndRemoveRedstoneBlock(new BlockPos(34, 16, 18), 1));
+        context.waitAndRun(400, () -> {
+            context.expectBlock(Blocks.SLIME_BLOCK, 18, 17, 15);
+            context.expectBlock(Blocks.SLIME_BLOCK, 21, 18, 17);
+            context.expectBlock(Blocks.REDSTONE_LAMP, 17, 17, 12);
+            context.expectBlock(Blocks.REDSTONE_LAMP, 24, 17, 17);
+
             context.expectBlock(Blocks.BUDDING_AMETHYST, 18, 18, 18);
+            context.expectBlock(Blocks.AIR, 17, 18, 18);
+            context.expectBlock(Blocks.AIR, 19, 18, 18);
+            context.expectBlock(Blocks.AIR, 18, 17, 18);
+            context.expectBlock(Blocks.AIR, 18, 19, 18);
+            context.expectBlock(Blocks.AIR, 18, 18, 17);
+            context.expectBlock(Blocks.AIR, 18, 18, 19);
+
             context.complete();
         });
     }
