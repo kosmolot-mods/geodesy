@@ -9,6 +9,7 @@ Feel free to tackle any of the things below.
   has shown in [Scicraft S02E04](https://www.youtube.com/watch?v=05AEd_1KQNY).
 - It's possible to harvest 1x3 areas by skipping the front extension and using
   the engine directly to punch out the blocks.
+- It should be possible to harvest 2x2 areas using a bent version of the 1x3 machines.
 - It also *might* be possible to poke out shards in 1x1 holes using a long "pole"
   of slime blocks, but this depends on how deep the shards are.
 
@@ -37,12 +38,6 @@ support for more types of flying machines.
 
 This one is tied to the projection logic as well. In some cases, removing blocks
 actually increases efficiency.
-
-## Relaxation of blocker block location requirements
-
-Currently the mod expects an L-shaped layout when marking the flying machines;
-this is unneccessary. The only true requirement is a 1x3 area for the machine
-and a single blocker block anywhere on the same sticky block cluster.
 
 ## Automatic sticky block clustering
 

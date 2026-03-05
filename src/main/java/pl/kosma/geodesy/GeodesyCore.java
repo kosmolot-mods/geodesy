@@ -459,19 +459,19 @@ public class GeodesyCore {
     // Places mob heads in L-shape pattern: 3 zombie heads + 1 wither skeleton skull.
     // Uses the pre-computed L-shape data from the solver result.
     private void placeMobHeadsForIsland(@NotNull IterableBlockBox geode, Direction direction, IslandFaceSolver.Island island) {
-        if (island.lShape() == null || island.lShape().stemCells() == null || island.lShape().stemCells().size() != 3) {
-            LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.lShape(), island);
-            sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.lShape(), island);
+        if (island.flyingMachine() == null || island.flyingMachine().stemCells() == null || island.flyingMachine().stemCells().size() != 3) {
+            LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.flyingMachine(), island);
+            sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.flyingMachine(), island);
             return;
         }
 
         // Place zombie heads on stem cells, wither skeleton skull on corner
-        for (int cell : island.lShape().stemCells()) {
+        for (int cell : island.flyingMachine().stemCells()) {
             BlockPos headPos = gridToWallPos(geode, direction, IslandFaceSolver.keyRow(cell), IslandFaceSolver.keyCol(cell)).move(direction, 2);
             placeSkull(headPos, Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, direction);
         }
 
-        int stopperCell = island.lShape().stopperCell();
+        int stopperCell = island.flyingMachine().stopperCell();
         BlockPos stopperPos = gridToWallPos(geode, direction, IslandFaceSolver.keyRow(stopperCell), IslandFaceSolver.keyCol(stopperCell)).move(direction, 2);
         placeSkull(stopperPos, Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, direction);
     }
@@ -522,30 +522,48 @@ public class GeodesyCore {
                 BlockPos oppositeWallPos = slice.getEndpoint(slicingDirection.getOpposite()).offset(slicingDirection, -WALL_OFFSET);
                 if (!MARKERS_BLOCKER.contains(world.getBlockState(blockerPos).getBlock()))
                     return;
+                // Read the sticky block at blocker position.
+                BlockPos stickyPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET);
+                Block stickyBlock = world.getBlockState(stickyPos).getBlock();
+
                 // Find the position of the first machine block.
                 BlockPos firstMachinePos = null;
                 for (Direction direction : Direction.values()) {
-                    if (MARKERS_MACHINE.contains(world.getBlockState(blockerPos.offset(direction)).getBlock())) {
+                    // Check there is a machine marker block and the sticky block is the correct type
+                    if (MARKERS_MACHINE.contains(world.getBlockState(blockerPos.offset(direction)).getBlock())
+                            && world.getBlockState(blockerPos.offset(direction).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
                         firstMachinePos = blockerPos.offset(direction);
                         break;
                     }
                 }
                 if (firstMachinePos == null)
                     return;
+
                 // First the direction of the second (and third) machine block.
                 Direction machineDirection = null;
                 for (Direction direction : Direction.values()) {
-                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock()) &&
-                            MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 2)).getBlock())) {
+                    // Check there is a machine marker block and the sticky block is the correct type
+                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock())
+                            && MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 2)).getBlock())
+                            && world.getBlockState(firstMachinePos.offset(direction, 1).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock
+                            && world.getBlockState(firstMachinePos.offset(direction, 2).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
+                        machineDirection = direction;
+                        break;
+                    }
+                    // Check there is a machine marker block and the sticky block is the correct type
+                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, -1)).getBlock())
+                            && MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock())
+                            && world.getBlockState(firstMachinePos.offset(direction, -1).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock
+                            && world.getBlockState(firstMachinePos.offset(direction, 1).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
+                        firstMachinePos = firstMachinePos.offset(direction, -1);
                         machineDirection = direction;
                         break;
                     }
                 }
                 if (machineDirection == null)
                     return;
-                // Read the sticky block at machine position (we need its opposite).
-                BlockPos stickyPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET);
-                Block stickyBlock = world.getBlockState(stickyPos).getBlock();
+
+                // We need the opposite sticky block for the flying machine.
                 if (stickyBlock == Blocks.SLIME_BLOCK)
                     stickyBlock = Blocks.HONEY_BLOCK;
                 else if (stickyBlock == Blocks.HONEY_BLOCK)

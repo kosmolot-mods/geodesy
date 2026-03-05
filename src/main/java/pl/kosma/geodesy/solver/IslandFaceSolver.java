@@ -14,9 +14,9 @@ import java.util.*;
  * Finds optimal placement of "islands" (connected groups of slime/honey blocks)
  * to cover harvest cells. Constraints:
  * - Each island must be 4-12 cells in size
- * - Each island must have an L-shape (required for flying machine mechanics)
+ * - Each island must have a 1x3 shape and one free neighbor (required for a flying machine)
  * - Adjacent islands must have different colors (slime vs honey)
- * - L-shapes of different islands cannot be adjacent
+ * - Flying machines of different islands cannot be adjacent
  * - Islands cannot overlap or cover blocked cells
  *
  * Maximizes: ones_covered - (island_count * island_cost)
@@ -60,18 +60,20 @@ public class IslandFaceSolver implements FaceSolver {
     // Underflow will impact the upper 16 bits, but we rely on range checks on the lower 16 bits to catch that.
     private static final int[] DIRECTIONS = {cellKey(0, 1), -1, cellKey(1, 0), cellKey(-1, 0)};
 
-    private record Shape(IntSet cells, BitSet mask, BitSet neighborsMask, int onesCovered, LShape lShape) {}
+    private record Shape(IntSet cells, BitSet mask, BitSet neighborsMask, int onesCovered, FlyingMachine flyingMachine) {}
 
     /**
      * @param material    1 = slime, 2 = honey
      */
-    public record Island(IntSet cells, LShape lShape, byte material) {}
+    public record Island(IntSet cells, FlyingMachine flyingMachine, byte material) {}
 
     /**
-     * @param stemCells   the 3 cells forming the main stem of the L-shape
-     * @param stopperCell the cell on the shorter leg of the L-shape
+     * @param stemCells         the 3 cells forming the main flying machine
+     * @param stemMask          pre-computed mask of the stem cells, used for quick intersection checks
+     * @param stemNeighborsMask pre-computed mask of all neighbors of the stem cells, used for quick adjacency checks
+     * @param stopperCell       the neighbor cell for the blocker block
      */
-    public record LShape(IntSet stemCells, BitSet stemMask, BitSet stemNeighborsMask, int stopperCell) {}
+    public record FlyingMachine(IntSet stemCells, BitSet stemMask, BitSet stemNeighborsMask, int stopperCell) {}
 
     @Override
     public SolverResult solve(FaceGrid input, SolverConfig config) {
@@ -183,13 +185,13 @@ public class IslandFaceSolver implements FaceSolver {
 
                     if (newShape.size() < MIN_ISLAND_SIZE) continue;
 
-                    LShape lShape = findLShapeCells(newShape);
-                    if (lShape == null) continue;
+                    FlyingMachine flyingMachine = findFlyingMachine(newShape);
+                    if (flyingMachine == null) continue;
 
                     if (!seenShapesGlobal.add(newShape)) continue;
 
                     // We have not seen this shape globally
-                    Shape shape = createShape(newShape, lShape);
+                    Shape shape = createShape(newShape, flyingMachine);
 
                     // Assign shape to every target it covers
                     for (int key : newShape) {
@@ -224,39 +226,48 @@ public class IslandFaceSolver implements FaceSolver {
         return neighbors;
     }
 
-    // Finds the L-shape cells (4 cells: 3 in a row + 1 perpendicular).
-    private LShape findLShapeCells(IntSet cells) {
+    // Finds the flying machine cells (4 cells: 3 in a row + 1 neighbor).
+    private FlyingMachine findFlyingMachine(IntSet cells) {
         for (int key : cells) {
-            for (int stemDir : DIRECTIONS) {
+            for (int i = 0; i <= 2; i += 2) {
+                int stemDir = DIRECTIONS[i];
                 int prevKey = key - stemDir;
                 int nextKey = key + stemDir;
 
                 if (cells.contains(prevKey) && cells.contains(nextKey)) {
-                    for (int perpDir : DIRECTIONS) {
-                        // Black magic with packed shorts
-                        if (perpDir == stemDir || perpDir == -stemDir) continue;
+                    // If stem is on +col (i=0), +row (perp=2) is perp
+                    // If stem is on +row (i=2), +col (perp=0) is perp
+                    int perpDir = DIRECTIONS[2 - i];
+                    int target;
 
-                        // Check corner at prev end
-                        int cornerKey = prevKey + perpDir;
-                        if (cells.contains(cornerKey)) {
-                            IntSet stemCells = IntSet.of(prevKey, key, nextKey);
-                            return new LShape(stemCells, getMask(stemCells), getNeighborsMask(stemCells), cornerKey);
-                        }
+                    // 1. Check one side (perpDir)
+                    if (cells.contains(target = prevKey + perpDir)
+                        || cells.contains(target = key + perpDir)
+                        || cells.contains(target = nextKey + perpDir))
+                        return createFlyingMachine(prevKey, key, nextKey, target);
 
-                        // Check corner at next end
-                        cornerKey = nextKey + perpDir;
-                        if (cells.contains(cornerKey)) {
-                            IntSet stemCells = IntSet.of(prevKey, key, nextKey);
-                            return new LShape(stemCells, getMask(stemCells), getNeighborsMask(stemCells), cornerKey);
-                        }
-                    }
+                    // 2. Check other side (-perpDir)
+                    if (cells.contains(target = prevKey - perpDir)
+                        || cells.contains(target = key - perpDir)
+                        || cells.contains(target = nextKey - perpDir))
+                        return createFlyingMachine(prevKey, key, nextKey, target);
+
+                    // 3. Check end sides (1x4 case)
+                    if (cells.contains(target = prevKey - stemDir)
+                        || cells.contains(target = nextKey + stemDir))
+                        return createFlyingMachine(prevKey, key, nextKey, target);
                 }
             }
         }
         return null;
     }
 
-    private Shape createShape(IntSet newShape, LShape lShape) {
+    private FlyingMachine createFlyingMachine(int prevKey, int key, int nextKey, int target) {
+        IntSet stemCells = IntSet.of(prevKey, key, nextKey);
+        return new FlyingMachine(stemCells, getMask(stemCells), getNeighborsMask(stemCells), target);
+    }
+
+    private Shape createShape(IntSet newShape, FlyingMachine flyingMachine) {
         int ones = 0;
 
         for (int key : newShape) {
@@ -267,7 +278,7 @@ public class IslandFaceSolver implements FaceSolver {
             }
         }
 
-        return new Shape(newShape, getMask(newShape), getNeighborsMask(newShape), ones, lShape);
+        return new Shape(newShape, getMask(newShape), getNeighborsMask(newShape), ones, flyingMachine);
     }
 
     private BitSet getMask(IntSet cells) {
@@ -309,7 +320,7 @@ public class IslandFaceSolver implements FaceSolver {
     }
 
     private void backtrack(int sortedIdx, List<Island> currentIslands,
-                           BitSet slimeMask, BitSet honeyMask, BitSet lShapeStemMask,
+                           BitSet slimeMask, BitSet honeyMask, BitSet flyingMachineStemMask,
                            int currentOnes, int remainingPossibleTargets, int currentIslandsCount) {
         if (System.currentTimeMillis() - startTime > timeoutMs) {
             return;
@@ -335,7 +346,7 @@ public class IslandFaceSolver implements FaceSolver {
 
         // Pruning: target already covered?
         if (slimeMask.get(targetBit) || honeyMask.get(targetBit)) {
-            backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, lShapeStemMask, currentOnes, remainingPossibleTargets, currentIslandsCount);
+            backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, flyingMachineStemMask, currentOnes, remainingPossibleTargets, currentIslandsCount);
             return;
         }
 
@@ -348,7 +359,7 @@ public class IslandFaceSolver implements FaceSolver {
             // Even though adjacent islands use different materials, adjacent L-shapes
             // would cause mechanical interference during piston extension — the
             // flying machines would push/pull each other's components.
-            if (isAdjacent(lShapeStemMask, shape.lShape)) continue;
+            if (isAdjacent(flyingMachineStemMask, shape.flyingMachine)) continue;
 
             // Check if this shape would be adjacent to both slime and honey islands, which is not allowed
             boolean slimeAdj = isAdjacent(slimeMask, shape);
@@ -356,17 +367,17 @@ public class IslandFaceSolver implements FaceSolver {
 
             byte color = slimeAdj ? HONEY : SLIME;
 
-            currentIslands.add(new Island(shape.cells, shape.lShape, color));
+            currentIslands.add(new Island(shape.cells, shape.flyingMachine, color));
             if (slimeAdj) honeyMask.or(shape.mask);
             else slimeMask.or(shape.mask);
-            lShapeStemMask.or(shape.lShape.stemMask);
+            flyingMachineStemMask.or(shape.flyingMachine.stemMask);
 
             backtrack(
                     sortedIdx + 1,
                     currentIslands,
                     slimeMask,
                     honeyMask,
-                    lShapeStemMask,
+                    flyingMachineStemMask,
                     currentOnes + shape.onesCovered,
                     remainingPossibleTargets - shape.onesCovered,
                     currentIslandsCount + 1
@@ -375,16 +386,16 @@ public class IslandFaceSolver implements FaceSolver {
             currentIslands.removeLast();
             if (slimeAdj) honeyMask.andNot(shape.mask);
             else slimeMask.andNot(shape.mask);
-            lShapeStemMask.andNot(shape.lShape.stemMask);
+            flyingMachineStemMask.andNot(shape.flyingMachine.stemMask);
         }
 
         // Option: skip this target
         // There are no valid shapes that cover this target
-        backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, lShapeStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
+        backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, flyingMachineStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
     }
 
-    private boolean isAdjacent(BitSet lShapeStemMask, LShape newLShape) {
-        return lShapeStemMask.intersects(newLShape.stemNeighborsMask);
+    private boolean isAdjacent(BitSet flyingMachineStemMask, FlyingMachine newFlyingMachine) {
+        return flyingMachineStemMask.intersects(newFlyingMachine.stemNeighborsMask);
     }
 
     private boolean isAdjacent(BitSet cellsMask, Shape newShape) {
