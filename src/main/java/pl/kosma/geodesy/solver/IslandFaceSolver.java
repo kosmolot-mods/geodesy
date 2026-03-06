@@ -56,6 +56,10 @@ public class IslandFaceSolver implements FaceSolver {
     private List<Island> bestSolution;
     private double maxScore;
 
+    // Time tracking
+    private long backtrackCalls;
+    private boolean timedOut;
+
     // Special processing for subtracting 1 from the lower 16 bits.
     // Underflow will impact the upper 16 bits, but we rely on range checks on the lower 16 bits to catch that.
     private static final int[] DIRECTIONS = {cellKey(0, 1), -1, cellKey(1, 0), cellKey(-1, 0)};
@@ -117,8 +121,6 @@ public class IslandFaceSolver implements FaceSolver {
         backtrack(0, new ArrayList<>(), new BitSet(totalCells), new BitSet(totalCells), new BitSet(totalCells), 0, targets.size(), 0);
 
         long solveTime = System.currentTimeMillis() - startTime;
-        boolean timedOut = solveTime >= timeoutMs;
-
         return buildResult(input, solveTime, timedOut);
     }
 
@@ -322,7 +324,8 @@ public class IslandFaceSolver implements FaceSolver {
     private void backtrack(int sortedIdx, List<Island> currentIslands,
                            BitSet slimeMask, BitSet honeyMask, BitSet flyingMachineStemMask,
                            int currentOnes, int remainingPossibleTargets, int currentIslandsCount) {
-        if (System.currentTimeMillis() - startTime > timeoutMs) {
+        if ((backtrackCalls++ & 0xFF) == 0 && System.currentTimeMillis() - startTime > timeoutMs) {
+            timedOut = true;
             return;
         }
 
@@ -382,6 +385,8 @@ public class IslandFaceSolver implements FaceSolver {
                     remainingPossibleTargets - shape.onesCovered,
                     currentIslandsCount + 1
             );
+
+            if (timedOut) return;
 
             currentIslands.removeLast();
             if (slimeAdj) honeyMask.andNot(shape.mask);
