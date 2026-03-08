@@ -53,19 +53,6 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
     private record Shape(IntSet cells, BitSet mask, BitSet neighborsMask, int onesCovered, FlyingMachine flyingMachine) {}
 
-    /**
-     * @param material    1 = slime, 2 = honey
-     */
-    public record Island(IntSet cells, FlyingMachine flyingMachine, byte material) {}
-
-    /**
-     * @param stemCells         the 3 cells forming the main flying machine
-     * @param stemMask          pre-computed mask of the stem cells, used for quick intersection checks
-     * @param stemNeighborsMask pre-computed mask of all neighbors of the stem cells, used for quick adjacency checks
-     * @param stopperCell       the neighbor cell for the blocker block
-     */
-    public record FlyingMachine(IntSet stemCells, BitSet stemMask, BitSet stemNeighborsMask, int stopperCell) {}
-
     public BacktrackingFaceSolver(FaceGrid input, SolverConfig config) {
         super(input, config);
     }
@@ -107,7 +94,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
         backtrack(0, new ArrayList<>(), new BitSet(totalCells), new BitSet(totalCells), new BitSet(totalCells), 0, targets.size(), 0);
 
         long solveTime = System.currentTimeMillis() - startTime;
-        return buildResult(input, solveTime, timedOut);
+        return buildResult(input, bestSolution, solveTime, timedOut);
     }
 
     private void precomputeShapes() {
@@ -342,7 +329,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
             currentIslands.add(new Island(shape.cells, shape.flyingMachine, color));
             if (slimeAdj) honeyMask.or(shape.mask);
             else slimeMask.or(shape.mask);
-            flyingMachineStemMask.or(shape.flyingMachine.stemMask);
+            flyingMachineStemMask.or(shape.flyingMachine.stemMask());
 
             backtrack(
                     sortedIdx + 1,
@@ -360,7 +347,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
             currentIslands.removeLast();
             if (slimeAdj) honeyMask.andNot(shape.mask);
             else slimeMask.andNot(shape.mask);
-            flyingMachineStemMask.andNot(shape.flyingMachine.stemMask);
+            flyingMachineStemMask.andNot(shape.flyingMachine.stemMask());
         }
 
         // Option: skip this target
@@ -369,47 +356,10 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     }
 
     private boolean isAdjacent(BitSet flyingMachineStemMask, FlyingMachine newFlyingMachine) {
-        return flyingMachineStemMask.intersects(newFlyingMachine.stemNeighborsMask);
+        return flyingMachineStemMask.intersects(newFlyingMachine.stemNeighborsMask());
     }
 
     private boolean isAdjacent(BitSet cellsMask, Shape newShape) {
         return cellsMask.intersects(newShape.neighborsMask);
-    }
-
-    private SolverResult buildResult(FaceGrid input, long solveTime, boolean timedOut) {
-        SolverResult.Builder builder = SolverResult.builder(input.width(), input.height(), input.direction())
-                .totalHarvest(input.getHarvestCount())
-                .solveTimeMs(solveTime)
-                .timedOut(timedOut);
-
-        IntSet coveredCells = new IntOpenHashSet();
-        for (Island island : bestSolution) {
-            coveredCells.addAll(island.cells);
-        }
-
-        int harvestCovered = 0;
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) {
-                if (grid[r][c] == FaceGrid.CELL_HARVEST && coveredCells.contains(cellKey(r, c))) {
-                    harvestCovered++;
-                }
-            }
-        }
-        builder.harvestCovered(harvestCovered);
-
-        for (Island island : bestSolution) {
-            for (int key : island.cells) {
-                int r = keyRow(key);
-                int c = keyCol(key);
-                // FaceGrid uses (x, y) where x=row, y=col
-                builder.setPlacement(r, c, island.material);
-            }
-
-            builder.addIsland(island);
-        }
-
-        LOGGER.info("Solution: {} islands, {} harvest covered", bestSolution.size(), harvestCovered);
-
-        return builder.build();
     }
 }

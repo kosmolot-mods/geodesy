@@ -448,14 +448,14 @@ public class GeodesyCore {
         }
 
         // Place mob heads for each island
-        for (BacktrackingFaceSolver.Island island : result.islands()) {
+        for (AbstractFaceSolver.Island island : result.islands()) {
             placeMobHeadsForIsland(geode, direction, island);
         }
     }
 
     // Places mob heads in L-shape pattern: 3 zombie heads + 1 wither skeleton skull.
     // Uses the pre-computed L-shape data from the solver result.
-    private void placeMobHeadsForIsland(@NotNull IterableBlockBox geode, Direction direction, BacktrackingFaceSolver.Island island) {
+    private void placeMobHeadsForIsland(@NotNull IterableBlockBox geode, Direction direction, AbstractFaceSolver.Island island) {
         if (island.flyingMachine() == null || island.flyingMachine().stemCells() == null || island.flyingMachine().stemCells().size() != 3) {
             LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.flyingMachine(), island);
             sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.flyingMachine(), island);
