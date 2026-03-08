@@ -11,7 +11,7 @@ import java.util.List;
  * Contains placement instructions (NONE, SLIME, HONEY) for each cell.
  */
 public record SolverResult(int width, int height, Direction direction,
-                           byte[][] placements, List<IslandFaceSolver.Island> islands,
+                           byte[][] placements, List<BacktrackingFaceSolver.Island> islands,
                            int harvestCovered, int totalHarvest, long solveTimeMs, boolean timedOut) {
 
     private SolverResult(Builder builder) {
@@ -63,7 +63,7 @@ public record SolverResult(int width, int height, Direction direction,
         private final int height;
         private final Direction direction;
         private final byte[][] placements;
-        private final List<IslandFaceSolver.Island> islands = new ArrayList<>();
+        private final List<BacktrackingFaceSolver.Island> islands = new ArrayList<>();
         private int harvestCovered = 0;
         private int totalHarvest = 0;
         private long solveTimeMs = 0;
@@ -81,7 +81,7 @@ public record SolverResult(int width, int height, Direction direction,
             return this;
         }
 
-        public Builder addIsland(IslandFaceSolver.Island island) {
+        public Builder addIsland(BacktrackingFaceSolver.Island island) {
             islands.add(island);
             return this;
         }

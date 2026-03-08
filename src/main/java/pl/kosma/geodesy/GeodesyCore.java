@@ -26,10 +26,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pl.kosma.geodesy.solver.FaceGrid;
-import pl.kosma.geodesy.solver.IslandFaceSolver;
-import pl.kosma.geodesy.solver.SolverConfig;
-import pl.kosma.geodesy.solver.SolverResult;
+import pl.kosma.geodesy.solver.*;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -262,7 +259,7 @@ public class GeodesyCore {
 
     private @NonNull CompletableFuture<Void> solveFace(@NotNull MinecraftServer server, @NotNull IterableBlockBox geode, SolverConfig config, FaceGrid faceGrid) {
         // Create a new solver instance for each face (thread safety)
-        return CompletableFuture.supplyAsync(() -> new IslandFaceSolver().solve(faceGrid, config))
+        return CompletableFuture.supplyAsync(() -> new BacktrackingFaceSolver(faceGrid, config).solve(faceGrid, config))
                 .exceptionally(e -> {
                     LOGGER.error("Failed to solve face {}", faceGrid.direction(), e);
                     sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.direction(), e.getMessage());
@@ -439,8 +436,8 @@ public class GeodesyCore {
                 mutablePos.move(direction, 1);
 
                 Block blockToPlace = switch (placement) {
-                    case IslandFaceSolver.SLIME -> Blocks.SLIME_BLOCK;
-                    case IslandFaceSolver.HONEY -> Blocks.HONEY_BLOCK;
+                    case AbstractFaceSolver.SLIME -> Blocks.SLIME_BLOCK;
+                    case AbstractFaceSolver.HONEY -> Blocks.HONEY_BLOCK;
                     default -> null;
                 };
 
@@ -451,14 +448,14 @@ public class GeodesyCore {
         }
 
         // Place mob heads for each island
-        for (IslandFaceSolver.Island island : result.islands()) {
+        for (BacktrackingFaceSolver.Island island : result.islands()) {
             placeMobHeadsForIsland(geode, direction, island);
         }
     }
 
     // Places mob heads in L-shape pattern: 3 zombie heads + 1 wither skeleton skull.
     // Uses the pre-computed L-shape data from the solver result.
-    private void placeMobHeadsForIsland(@NotNull IterableBlockBox geode, Direction direction, IslandFaceSolver.Island island) {
+    private void placeMobHeadsForIsland(@NotNull IterableBlockBox geode, Direction direction, BacktrackingFaceSolver.Island island) {
         if (island.flyingMachine() == null || island.flyingMachine().stemCells() == null || island.flyingMachine().stemCells().size() != 3) {
             LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.flyingMachine(), island);
             sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.flyingMachine(), island);
@@ -467,12 +464,12 @@ public class GeodesyCore {
 
         // Place zombie heads on stem cells, wither skeleton skull on corner
         for (int cell : island.flyingMachine().stemCells()) {
-            BlockPos headPos = gridToWallPos(geode, direction, IslandFaceSolver.keyRow(cell), IslandFaceSolver.keyCol(cell)).move(direction, 2);
+            BlockPos headPos = gridToWallPos(geode, direction, AbstractFaceSolver.keyRow(cell), AbstractFaceSolver.keyCol(cell)).move(direction, 2);
             placeSkull(headPos, Blocks.ZOMBIE_HEAD, Blocks.ZOMBIE_WALL_HEAD, direction);
         }
 
         int stopperCell = island.flyingMachine().stopperCell();
-        BlockPos stopperPos = gridToWallPos(geode, direction, IslandFaceSolver.keyRow(stopperCell), IslandFaceSolver.keyCol(stopperCell)).move(direction, 2);
+        BlockPos stopperPos = gridToWallPos(geode, direction, AbstractFaceSolver.keyRow(stopperCell), AbstractFaceSolver.keyCol(stopperCell)).move(direction, 2);
         placeSkull(stopperPos, Blocks.WITHER_SKELETON_SKULL, Blocks.WITHER_SKELETON_WALL_SKULL, direction);
     }
 

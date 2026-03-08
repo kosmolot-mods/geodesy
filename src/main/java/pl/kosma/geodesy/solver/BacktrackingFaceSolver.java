@@ -21,26 +21,13 @@ import java.util.*;
  *
  * Maximizes: ones_covered - (island_count * island_cost)
  */
-public class IslandFaceSolver implements FaceSolver {
+public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSolver {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger("IslandFaceSolver");
+    private static final Logger LOGGER = LoggerFactory.getLogger("BacktrackingFaceSolver");
 
-    private static final int MIN_ISLAND_SIZE = 4;
-    private static final int MAX_ISLAND_SIZE = 12;
     private static final int MAX_SHAPES_PER_TARGET = 1000;
 
-    public static final byte SLIME = 1;
-    public static final byte HONEY = 2;
-
     private static final Comparator<Shape> SHAPE_PRIORITY_COMPARATOR = Comparator.comparingInt(Shape::onesCovered).reversed();
-
-    // Grid state
-    private byte[][] grid;
-    private int rows;
-    private int cols;
-    private double islandCost;
-    private long timeoutMs;
-    private long startTime;
 
     // Target tracking
     private IntList targets;  // List of [row, col] for all 1s
@@ -79,16 +66,15 @@ public class IslandFaceSolver implements FaceSolver {
      */
     public record FlyingMachine(IntSet stemCells, BitSet stemMask, BitSet stemNeighborsMask, int stopperCell) {}
 
+    public BacktrackingFaceSolver(FaceGrid input, SolverConfig config) {
+        super(input, config);
+    }
+
     @Override
     public SolverResult solve(FaceGrid input, SolverConfig config) {
         startTime = System.currentTimeMillis();
-        timeoutMs = config.getTimeoutMs();
-        islandCost = config.getCostThreshold();
 
-        rows = input.width();
-        cols = input.height();
         int totalCells = rows * cols;
-        grid = input.copyCells();
 
         // Initialize state
         targets = new IntArrayList();
@@ -122,23 +108,6 @@ public class IslandFaceSolver implements FaceSolver {
 
         long solveTime = System.currentTimeMillis() - startTime;
         return buildResult(input, solveTime, timedOut);
-    }
-
-    private static int cellKey(int row, int col) {
-        return (row << 16) | (col & 0xFFFF);
-    }
-
-    public static int keyRow(int key) {
-        return key >> 16;
-    }
-
-    public static int keyCol(int key) {
-        // This interprets the 16th bit as the sign bit
-        return key << 16 >> 16;
-    }
-
-    private int cellBit(int row, int col) {
-        return row * cols + col;
     }
 
     private void precomputeShapes() {
