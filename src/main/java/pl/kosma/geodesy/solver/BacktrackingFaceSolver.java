@@ -25,7 +25,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
     private static final Logger LOGGER = LoggerFactory.getLogger("BacktrackingFaceSolver");
 
-    private static final int MAX_SHAPES_PER_TARGET = 1000;
+    private static final int MAX_SHAPES_PER_TARGET = 100;
 
     private static final Comparator<Shape> SHAPE_PRIORITY_COMPARATOR = Comparator.comparingInt(Shape::onesCovered).reversed();
 
