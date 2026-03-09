@@ -2,6 +2,7 @@ package pl.kosma.geodesy.solver;
 
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.ints.IntSets;
 
 import java.util.BitSet;
 import java.util.List;
@@ -86,7 +87,17 @@ public abstract class AbstractFaceSolver implements FaceSolver {
     /**
      * @param material    1 = slime, 2 = honey
      */
-    public record Island(IntSet cells, BitSet mask, FlyingMachine flyingMachine, byte material) {}
+    public record Island(IntSet cells, BitSet mask, FlyingMachine flyingMachine, byte material) {
+        public Island withCell(int cell, int bit) {
+            IntSet newCells = new IntOpenHashSet(cells);
+            newCells.add(cell);
+
+            BitSet newMask = (BitSet) mask.clone();
+            newMask.set(bit);
+
+            return new Island(IntSets.unmodifiable(newCells), newMask, flyingMachine, material);
+        }
+    }
 
     /**
      * @param stemCells         the 3 cells forming the main flying machine

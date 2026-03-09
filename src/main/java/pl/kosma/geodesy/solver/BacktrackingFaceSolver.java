@@ -375,79 +375,83 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
                     BitSet materialMask = island.material() == SLIME ? bestSolutionSlimeMask : bestSolutionHoneyMask;
 
                     // Only expand into or swap with harvest cells.
+                    // Or else we may expand in useless air directions.
                     if (grid[nr][nc] != FaceGrid.CELL_HARVEST || isAdjacent(materialMask, island.mask(), n)) continue;
 
                     // Expand island
                     if (!bestSolutionSlimeMask.get(nBit) && !bestSolutionHoneyMask.get(nBit)) {
-                        IntSet newCells = new IntOpenHashSet(island.cells());
-                        BitSet newMask = (BitSet) island.mask().clone();
-                        newCells.add(n);
-                        newMask.set(nBit);
-                        newCells = IntSets.unmodifiable(newCells);
-
                         materialMask.set(nBit);
 
-                        bestSolution.set(i, new Island(newCells, newMask, island.flyingMachine(), island.material()));
+                        bestSolution.set(i, island.withCell(n, nBit));
 
                         improved = true;
                         break;
                     }
 
-                    // Try to steal this cell from a neighbor
-                    // This allows other larger islands to expand and does not count as an improvement
-                    for (int j = 0; j < bestSolution.size(); j++) {
-                        if (i == j) continue;
-                        Island neighboring = bestSolution.get(j);
-
-                        if (!neighboring.mask().get(nBit) || neighboring.cells().size() <= 4) continue;
-
-                        // Create the new neighboring island state after losing this cell.
-                        IntSet neighborNewCells = new IntOpenHashSet(neighboring.cells());
-                        BitSet neighborNewMask = (BitSet) neighboring.mask().clone();
-                        FlyingMachine neighborFlyingMachine = neighboring.flyingMachine();
-                        neighborNewCells.remove(n);
-                        neighborNewMask.clear(nBit);
-                        neighborNewCells = IntSets.unmodifiable(neighborNewCells);
-
-                        // If we steal part of the neighbor's flying machine.
-                        if (neighborFlyingMachine.stemMask().get(nBit) || neighborFlyingMachine.stopperCell() == n) {
-                            // Try to find a new flying machine.
-                            neighborFlyingMachine = findFlyingMachine(neighborNewCells);
-                            if (neighborFlyingMachine == null) {
-                                continue;
-                            }
-                        }
-
-                        // Check the neighbor is still connected after losing this cell.
-                        if (!isConnected(neighborNewCells)) continue;
-
-                        // Create the new island state after stealing this cell.
-                        IntSet newCells = new IntOpenHashSet(island.cells());
-                        BitSet newMask = (BitSet) island.mask().clone();
-                        newCells.add(n);
-                        newMask.set(nBit);
-                        newCells = IntSets.unmodifiable(newCells);
-
-                        // Update the material masks to reflect the cell transfer.
-                        if (island.material() == SLIME) {
-                            bestSolutionSlimeMask.set(nBit);
-                            bestSolutionHoneyMask.clear(nBit);
-                        } else {
-                            bestSolutionSlimeMask.clear(nBit);
-                            bestSolutionHoneyMask.set(nBit);
-                        }
-
-                        // Update the island variable for the next iteration of the neighbor loop.
-                        bestSolution.set(i, island = new Island(newCells, newMask, island.flyingMachine(), island.material()));
-                        bestSolution.set(j, new Island(neighborNewCells, neighborNewMask, neighborFlyingMachine, neighboring.material()));
-
-                        // This does not count as an improvement.
-                        // By breaking into the next iteration of the neighbor loop, this can cause us to miss some newly added neighbors.
-                        break;
-                    }
+                    island = tryTakeCell(i, island, n, nBit);
                 }
             }
         }
+    }
+
+    /**
+     * Try to steal the provided cell from a neighbor.
+     * This allows other larger islands to expand and does not count as an improvement.
+     *
+     * @param i      the index of the current island we are trying to expand
+     * @param island the current island we are trying to expand
+     * @param n      the cell we are trying to steal from a neighbor
+     * @param nBit   the bit index of the cell we are trying to steal from a neighbor
+     * @return the updated current island
+     */
+    private Island tryTakeCell(int i, Island island, int n, int nBit) {
+        for (int j = 0; j < bestSolution.size(); j++) {
+            if (i == j) continue;
+            Island neighboring = bestSolution.get(j);
+
+            if (!neighboring.mask().get(nBit) || neighboring.cells().size() <= 4) continue;
+
+            // Create the new neighboring island state after losing this cell.
+            IntSet neighborNewCells = new IntOpenHashSet(neighboring.cells());
+            BitSet neighborNewMask = (BitSet) neighboring.mask().clone();
+            FlyingMachine neighborFlyingMachine = neighboring.flyingMachine();
+            neighborNewCells.remove(n);
+            neighborNewMask.clear(nBit);
+            neighborNewCells = IntSets.unmodifiable(neighborNewCells);
+
+            // If we steal part of the neighbor's flying machine.
+            if (neighborFlyingMachine.stemMask().get(nBit) || neighborFlyingMachine.stopperCell() == n) {
+                // Try to find a new flying machine.
+                neighborFlyingMachine = findFlyingMachine(neighborNewCells);
+                if (neighborFlyingMachine == null) {
+                    continue;
+                }
+            }
+
+            // Check the neighbor is still connected after losing this cell.
+            if (!isConnected(neighborNewCells)) continue;
+
+            // Update the material masks to reflect the cell transfer.
+            if (island.material() == SLIME) {
+                bestSolutionSlimeMask.set(nBit);
+                bestSolutionHoneyMask.clear(nBit);
+            } else {
+                bestSolutionSlimeMask.clear(nBit);
+                bestSolutionHoneyMask.set(nBit);
+            }
+
+            // Create the new island state after stealing this cell.
+            // Update the island variable for the next iteration of the neighbor loop.
+            bestSolution.set(i, island = island.withCell(n, nBit));
+            bestSolution.set(j, new Island(neighborNewCells, neighborNewMask, neighborFlyingMachine, neighboring.material()));
+
+            // This does not count as an improvement.
+            // By breaking into the next iteration of the neighbor loop, this can cause us to miss some newly added neighbors.
+            // This means cells can only steal from their original neighbors each iteration, which shouldn't be a big issue.
+            break;
+        }
+
+        return island;
     }
 
     private boolean isAdjacent(BitSet flyingMachineStemMask, FlyingMachine newFlyingMachine) {
