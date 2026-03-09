@@ -172,12 +172,12 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         for (int key : current) {
             for (int dir : DIRECTIONS) {
-                int nkey = key + dir;
-                int nr = keyRow(nkey);
-                int nc = keyCol(nkey);
+                int nKey = key + dir;
+                int nr = keyRow(nKey);
+                int nc = keyCol(nKey);
 
-                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] != FaceGrid.CELL_BLOCKED && !current.contains(nkey)) {
-                    neighbors.add(nkey);
+                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] != FaceGrid.CELL_BLOCKED && !current.contains(nKey)) {
+                    neighbors.add(nKey);
                 }
             }
         }
@@ -252,12 +252,11 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     private BitSet getNeighborsMask(IntSet shape) {
         BitSet neighborsMask = new BitSet();
         for (int key : shape) {
-            int r = keyRow(key);
-            int c = keyCol(key);
             for (int dir : DIRECTIONS) {
-                int nr = r + keyRow(dir);
-                int nc = c + keyCol(dir);
-                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                int nKey = key + dir;
+                int nr = keyRow(nKey);
+                int nc = keyCol(nKey);
+                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !shape.contains(nKey)) {
                     neighborsMask.set(cellBit(nr, nc));
                 }
             }
