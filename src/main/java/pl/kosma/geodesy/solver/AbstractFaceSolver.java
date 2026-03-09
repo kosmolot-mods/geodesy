@@ -2,15 +2,11 @@ package pl.kosma.geodesy.solver;
 
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.BitSet;
 import java.util.List;
 
 public abstract class AbstractFaceSolver implements FaceSolver {
-
-    public static final Logger LOGGER = LoggerFactory.getLogger("AbstractFaceSolver");
 
     public static final int MIN_ISLAND_SIZE = 4;
     public static final int MAX_ISLAND_SIZE = 12;
@@ -83,8 +79,6 @@ public abstract class AbstractFaceSolver implements FaceSolver {
 
             builder.addIsland(island);
         }
-
-        LOGGER.info("Solution: {} islands, {} harvest covered", bestSolution.size(), harvestCovered);
 
         return builder.build();
     }

@@ -270,11 +270,12 @@ public class GeodesyCore {
                     applySolverResult(geode, result.direction(), result);
 
                     // Report results
-                    sendCommandFeedback("  %s: %.0f%% coverage (%d/%d), %d blocks, %dms%s",
+                    sendCommandFeedback("  %s: %.0f%% coverage (%d/%d), %d flying machines, %d blocks, %dms%s",
                             result.direction(),
                             result.getCoveragePercent(),
                             result.harvestCovered(),
                             result.totalHarvest(),
+                            result.islands().size(),
                             result.getBlockCount(),
                             result.solveTimeMs(),
                             result.timedOut() ? " (timed out)" : ""
