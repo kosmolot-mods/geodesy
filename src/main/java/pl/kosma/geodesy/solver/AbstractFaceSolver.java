@@ -55,20 +55,12 @@ public abstract class AbstractFaceSolver implements FaceSolver {
                 .solveTimeMs(solveTime)
                 .timedOut(timedOut);
 
-        IntSet coveredCells = new IntOpenHashSet();
-        for (Island island : bestSolution) {
-            coveredCells.addAll(island.cells);
-        }
-
-        int harvestCovered = 0;
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) {
-                if (grid[r][c] == FaceGrid.CELL_HARVEST && coveredCells.contains(cellKey(r, c))) {
-                    harvestCovered++;
-                }
-            }
-        }
-        builder.harvestCovered(harvestCovered);
+        builder.harvestCovered((int) bestSolution.stream()
+                .map(Island::cells)
+                .flatMapToInt(IntSet::intStream)
+                .distinct()
+                .filter(key -> grid[keyRow(key)][keyCol(key)] == FaceGrid.CELL_HARVEST)
+                .count());
 
         for (Island island : bestSolution) {
             for (int key : island.cells) {
@@ -94,6 +86,16 @@ public abstract class AbstractFaceSolver implements FaceSolver {
 
             BitSet newMask = (BitSet) mask.clone();
             newMask.set(bit);
+
+            return new Island(IntSets.unmodifiable(newCells), newMask, flyingMachine, material);
+        }
+
+        public Island union(Island other) {
+            IntSet newCells = new IntOpenHashSet(cells);
+            newCells.addAll(other.cells);
+
+            BitSet newMask = (BitSet) mask.clone();
+            newMask.or(other.mask);
 
             return new Island(IntSets.unmodifiable(newCells), newMask, flyingMachine, material);
         }
