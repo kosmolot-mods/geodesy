@@ -40,11 +40,11 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     private int[] sortedTargetIndices;
 
     // Best solution found
+    private double bestScore = Double.NEGATIVE_INFINITY;
     private List<Island> bestSolution = new ArrayList<>();
-    private double maxScore = Double.NEGATIVE_INFINITY;
     // Store slime and honey masks for best solution for use in hill climbing
-    private BitSet slimeMask = new BitSet();
-    private BitSet honeyMask = new BitSet();
+    private BitSet bestSolutionSlimeMask = new BitSet();
+    private BitSet bestSolutionHoneyMask = new BitSet();
 
     // Time tracking
     private long backtrackCalls;
@@ -288,17 +288,17 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         // Base case: all targets considered
         if (sortedIdx >= targets.size()) {
-            if (currentScore > maxScore) {
-                maxScore = currentScore;
+            if (currentScore > bestScore) {
+                bestScore = currentScore;
                 bestSolution = new ArrayList<>(currentIslands);
-                this.slimeMask = (BitSet) slimeMask.clone();
-                this.honeyMask = (BitSet) honeyMask.clone();
+                bestSolutionSlimeMask = (BitSet) slimeMask.clone();
+                bestSolutionHoneyMask = (BitSet) honeyMask.clone();
             }
             return;
         }
 
         // Pruning: score estimation
-        if (currentScore + remainingPossibleTargets <= maxScore) return;
+        if (currentScore + remainingPossibleTargets <= bestScore) return;
 
         int realTargetIdx = sortedTargetIndices[sortedIdx];
         int targetKey = targets.getInt(realTargetIdx);
@@ -372,13 +372,13 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
                     int nr = keyRow(n);
                     int nc = keyCol(n);
                     int nBit = cellBit(nr, nc);
-                    BitSet materialMask = island.material() == SLIME ? slimeMask : honeyMask;
+                    BitSet materialMask = island.material() == SLIME ? bestSolutionSlimeMask : bestSolutionHoneyMask;
 
                     // Only expand into or swap with harvest cells.
                     if (grid[nr][nc] != FaceGrid.CELL_HARVEST || isAdjacent(materialMask, island.mask(), n)) continue;
 
                     // Expand island
-                    if (!slimeMask.get(nBit) && !honeyMask.get(nBit)) {
+                    if (!bestSolutionSlimeMask.get(nBit) && !bestSolutionHoneyMask.get(nBit)) {
                         IntSet newCells = new IntOpenHashSet(island.cells());
                         BitSet newMask = (BitSet) island.mask().clone();
                         newCells.add(n);
@@ -416,11 +416,11 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
                             if (isConnected(neighborNewCells)) {
                                 if (island.material() == SLIME) {
-                                    slimeMask.set(nBit);
-                                    honeyMask.clear(nBit);
+                                    bestSolutionSlimeMask.set(nBit);
+                                    bestSolutionHoneyMask.clear(nBit);
                                 } else {
-                                    slimeMask.clear(nBit);
-                                    honeyMask.set(nBit);
+                                    bestSolutionSlimeMask.clear(nBit);
+                                    bestSolutionHoneyMask.set(nBit);
                                 }
 
                                 // Update the island variable for the next iteration of the j loop
