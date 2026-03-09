@@ -39,13 +39,12 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     // Sorted target indices (by scarcity - fewest shapes first)
     private int[] sortedTargetIndices;
 
-    // Backtracking and hill climbing state
-    private final BitSet slimeMask = new BitSet(totalCells);
-    private final BitSet honeyMask = new BitSet(totalCells);
-
     // Best solution found
     private List<Island> bestSolution = new ArrayList<>();
     private double maxScore = Double.NEGATIVE_INFINITY;
+    // Store slime and honey masks for best solution for use in hill climbing
+    private BitSet slimeMask = new BitSet();
+    private BitSet honeyMask = new BitSet();
 
     // Time tracking
     private long backtrackCalls;
@@ -64,6 +63,8 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     @Override
     public SolverResult solve(FaceGrid input, SolverConfig config) {
         startTime = System.currentTimeMillis();
+
+        int totalCells = rows * cols;
 
         // Initialize state
         targetIndices.defaultReturnValue(-1);
@@ -88,7 +89,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         precomputeShapes();
         sortShapes();
-        backtrack(0, new ArrayList<>(), new BitSet(totalCells), 0, targets.size(), 0);
+        backtrack(0, new ArrayList<>(), new BitSet(totalCells), new BitSet(totalCells), new BitSet(totalCells), 0, targets.size(), 0);
         hillClimbSolution();
 
         long solveTime = System.currentTimeMillis() - startTime;
@@ -174,7 +175,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
                 int nr = keyRow(nkey);
                 int nc = keyCol(nkey);
 
-                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] != FaceGrid.CELL_BLOCKED) {
+                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && grid[nr][nc] != FaceGrid.CELL_BLOCKED && !current.contains(nkey)) {
                     neighbors.add(nkey);
                 }
             }
@@ -275,7 +276,8 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
         }
     }
 
-    private void backtrack(int sortedIdx, List<Island> currentIslands, BitSet flyingMachineStemMask,
+    private void backtrack(int sortedIdx, List<Island> currentIslands,
+                           BitSet slimeMask, BitSet honeyMask, BitSet flyingMachineStemMask,
                            int currentOnes, int remainingPossibleTargets, int currentIslandsCount) {
         if ((backtrackCalls++ & 0xFFFF) == 0 && System.currentTimeMillis() - startTime > timeoutMs) {
             timedOut = true;
@@ -289,6 +291,8 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
             if (currentScore > maxScore) {
                 maxScore = currentScore;
                 bestSolution = new ArrayList<>(currentIslands);
+                this.slimeMask = (BitSet) slimeMask.clone();
+                this.honeyMask = (BitSet) honeyMask.clone();
             }
             return;
         }
@@ -302,7 +306,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         // Pruning: target already covered?
         if (slimeMask.get(targetBit) || honeyMask.get(targetBit)) {
-            backtrack(sortedIdx + 1, currentIslands, flyingMachineStemMask, currentOnes, remainingPossibleTargets, currentIslandsCount);
+            backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, flyingMachineStemMask, currentOnes, remainingPossibleTargets, currentIslandsCount);
             return;
         }
 
@@ -331,6 +335,8 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
             backtrack(
                     sortedIdx + 1,
                     currentIslands,
+                    slimeMask,
+                    honeyMask,
                     flyingMachineStemMask,
                     currentOnes + shape.onesCovered,
                     remainingPossibleTargets - shape.onesCovered,
@@ -347,7 +353,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         // Option: skip this target
         // There are no valid shapes that cover this target
-        backtrack(sortedIdx + 1, currentIslands, flyingMachineStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
+        backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, flyingMachineStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
     }
 
     private void hillClimbSolution() {

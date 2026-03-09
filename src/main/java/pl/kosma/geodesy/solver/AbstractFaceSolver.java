@@ -22,7 +22,6 @@ public abstract class AbstractFaceSolver implements FaceSolver {
     protected final byte[][] grid;
     protected final int rows;
     protected final int cols;
-    protected final int totalCells;
     protected final double islandCost;
     protected final long timeoutMs;
     protected long startTime;
@@ -31,7 +30,6 @@ public abstract class AbstractFaceSolver implements FaceSolver {
         grid = input.copyCells();
         rows = input.width();
         cols = input.height();
-        totalCells = rows * cols;
 
         timeoutMs = config.getTimeoutMs();
         islandCost = config.getCostThreshold();
