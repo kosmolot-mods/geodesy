@@ -29,8 +29,6 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
     private static final Comparator<Shape> SHAPE_PRIORITY_COMPARATOR = Comparator.comparingInt(Shape::onesCovered).reversed();
 
-    private final int backtrackTimeoutMs = (int) (timeoutMs * 0.9);
-
     // Target tracking
     private final IntList targets = new IntArrayList();  // List of [row, col] for all 1s
     private final Int2IntOpenHashMap targetIndices = new Int2IntOpenHashMap();  // Map cell key -> index in targets
@@ -279,7 +277,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
     private void backtrack(int sortedIdx, List<Island> currentIslands, BitSet flyingMachineStemMask,
                            int currentOnes, int remainingPossibleTargets, int currentIslandsCount) {
-        if ((backtrackCalls++ & 0xFFFF) == 0 && System.currentTimeMillis() - startTime > backtrackTimeoutMs) {
+        if ((backtrackCalls++ & 0xFFFF) == 0 && System.currentTimeMillis() - startTime > timeoutMs) {
             timedOut = true;
             return;
         }
@@ -353,15 +351,8 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     }
 
     private void hillClimbSolution() {
-        int hillClimbIterations = 0;
-
         boolean improved = true;
         while (improved) {
-            if ((hillClimbIterations++ & 0xFFFF) == 0 && System.currentTimeMillis() - startTime > timeoutMs) {
-                timedOut = true;
-                break;
-            }
-
             improved = false;
 
             bestSolution.sort(Comparator.comparingInt(island -> island.cells().size()));
@@ -396,12 +387,13 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
                         break;
                     }
 
-                    // Swap a cell with a neighbor
+                    // Steal a cell from a neighbor
                     for (int j = 0; j < bestSolution.size(); j++) {
                         if (i == j) continue;
                         Island neighboring = bestSolution.get(j);
 
                         // Try stealing this cell from the neighbor
+                        // This allows other larger islands to expand and does not count as an improvement
                         if (neighboring.mask().get(nBit) && neighboring.cells().size() > 4
                                 && !neighboring.flyingMachine().stemMask().get(nBit) && neighboring.flyingMachine().stopperCell() != n) {
                             IntSet newCells = new IntOpenHashSet(island.cells());
@@ -425,16 +417,15 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
                                     honeyMask.set(nBit);
                                 }
 
-                                bestSolution.set(i, new Island(newCells, newMask, island.flyingMachine(), island.material()));
+                                // Update the island variable for the next iteration of the j loop
+                                bestSolution.set(i, island = new Island(newCells, newMask, island.flyingMachine(), island.material()));
                                 bestSolution.set(j, new Island(neighborNewCells, neighborNewMask, neighboring.flyingMachine(), neighboring.material()));
 
-                                improved = true;
+                                // This does not count as an improvement.
                                 break;
                             }
                         }
                     }
-
-                    if (improved) break;
                 }
             }
         }
