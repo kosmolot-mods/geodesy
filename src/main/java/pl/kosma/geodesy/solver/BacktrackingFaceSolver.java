@@ -420,24 +420,38 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     }
 
     /**
-     * Try merging neighbor into the current island.
+     * Try merging neighbor into the current island, preferring slime if possible.
      */
     private boolean tryMerge(int i, Island island, BitSet materialMask, int j, Island neighboring) {
         if (island.cells().size() + neighboring.cells().size() > MAX_ISLAND_SIZE) return false;
 
-        // If the neighboring island is adjacent to other islands of the same material as the current island,
-        // we can not change its material to match the current island, so we can not merge it.
-        if (neighboring.cells().intStream().anyMatch(key -> isAdjacent(materialMask, island.mask(), key))) return false;
+        BitSet neighboringMaterialMask = neighboring.material() == SLIME ? bestSolutionSlimeMask : bestSolutionHoneyMask;
+        boolean canChangeIsland = island.cells().intStream().noneMatch(key -> isAdjacent(neighboringMaterialMask, neighboring.mask(), key));
+        boolean canChangeNeighbor = neighboring.cells().intStream().noneMatch(key -> isAdjacent(materialMask, island.mask(), key));
 
-        if (island.material() == SLIME) {
+        if (island.material() == SLIME && canChangeNeighbor || neighboring.material() == SLIME && canChangeIsland) {
+            return merge(i, island, j, neighboring, SLIME);
+        } else if (island.material() == HONEY && canChangeNeighbor || neighboring.material() == HONEY && canChangeIsland) {
+            return merge(i, island, j, neighboring, HONEY);
+        } else {
+            return false;
+        }
+    }
+
+    private boolean merge(int i, Island island, int j, Island neighboring, byte newMaterial) {
+        if (newMaterial == SLIME) {
+            bestSolutionSlimeMask.or(island.mask());
             bestSolutionSlimeMask.or(neighboring.mask());
+            bestSolutionHoneyMask.andNot(island.mask());
             bestSolutionHoneyMask.andNot(neighboring.mask());
         } else {
+            bestSolutionSlimeMask.andNot(island.mask());
             bestSolutionSlimeMask.andNot(neighboring.mask());
+            bestSolutionHoneyMask.or(island.mask());
             bestSolutionHoneyMask.or(neighboring.mask());
         }
 
-        bestSolution.set(i, island.union(neighboring));
+        bestSolution.set(i, island.union(neighboring, newMaterial));
         bestSolution.set(j, null); // Avoid breaking existing indices
 
         return true;

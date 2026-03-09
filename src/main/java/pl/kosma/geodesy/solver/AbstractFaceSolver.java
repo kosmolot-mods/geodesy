@@ -90,14 +90,14 @@ public abstract class AbstractFaceSolver implements FaceSolver {
             return new Island(IntSets.unmodifiable(newCells), newMask, flyingMachine, material);
         }
 
-        public Island union(Island other) {
+        public Island union(Island other, byte newMaterial) {
             IntSet newCells = new IntOpenHashSet(cells);
             newCells.addAll(other.cells);
 
             BitSet newMask = (BitSet) mask.clone();
             newMask.or(other.mask);
 
-            return new Island(IntSets.unmodifiable(newCells), newMask, flyingMachine, material);
+            return new Island(IntSets.unmodifiable(newCells), newMask, flyingMachine, newMaterial);
         }
     }
 
