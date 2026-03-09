@@ -5,7 +5,7 @@ package pl.kosma.geodesy.solver;
  */
 public class SolverConfig {
 
-    public static final long DEFAULT_TIMEOUT_MS = 10_000L;
+    public static final long DEFAULT_TIMEOUT_MS = 2_000L;
     public static final double DEFAULT_COST_THRESHOLD = 1.0;
     // Below 1.0, islands covering only 1 harvest cell would still be "profitable".
     public static final double MIN_COST_THRESHOLD = 1.0;
