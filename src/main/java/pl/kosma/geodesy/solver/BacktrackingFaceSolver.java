@@ -29,19 +29,25 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
     private static final Comparator<Shape> SHAPE_PRIORITY_COMPARATOR = Comparator.comparingInt(Shape::onesCovered).reversed();
 
+    private final int backtrackTimeoutMs = (int) (timeoutMs * 0.9);
+
     // Target tracking
-    private IntList targets;  // List of [row, col] for all 1s
-    private Int2IntOpenHashMap targetIndices;  // Map cell key -> index in targets
+    private final IntList targets = new IntArrayList();  // List of [row, col] for all 1s
+    private final Int2IntOpenHashMap targetIndices = new Int2IntOpenHashMap();  // Map cell key -> index in targets
 
     // Precomputed shapes: Map target_index -> list of Shape
-    private Int2ObjectOpenHashMap<List<Shape>> possibleShapes;
+    private final Int2ObjectOpenHashMap<List<Shape>> possibleShapes = new Int2ObjectOpenHashMap<>();
 
     // Sorted target indices (by scarcity - fewest shapes first)
     private int[] sortedTargetIndices;
 
+    // Backtracking and hill climbing state
+    private final BitSet slimeMask = new BitSet(totalCells);
+    private final BitSet honeyMask = new BitSet(totalCells);
+
     // Best solution found
-    private List<Island> bestSolution;
-    private double maxScore;
+    private List<Island> bestSolution = new ArrayList<>();
+    private double maxScore = Double.NEGATIVE_INFINITY;
 
     // Time tracking
     private long backtrackCalls;
@@ -61,15 +67,8 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
     public SolverResult solve(FaceGrid input, SolverConfig config) {
         startTime = System.currentTimeMillis();
 
-        int totalCells = rows * cols;
-
         // Initialize state
-        targets = new IntArrayList();
-        targetIndices = new Int2IntOpenHashMap();
         targetIndices.defaultReturnValue(-1);
-        possibleShapes = new Int2ObjectOpenHashMap<>();
-        bestSolution = new ArrayList<>();
-        maxScore = Double.NEGATIVE_INFINITY;
 
         // Find all target cells
         for (int r = 0; r < rows; r++) {
@@ -91,7 +90,8 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         precomputeShapes();
         sortShapes();
-        backtrack(0, new ArrayList<>(), new BitSet(totalCells), new BitSet(totalCells), new BitSet(totalCells), 0, targets.size(), 0);
+        backtrack(0, new ArrayList<>(), new BitSet(totalCells), 0, targets.size(), 0);
+        hillClimbSolution();
 
         long solveTime = System.currentTimeMillis() - startTime;
         return buildResult(input, bestSolution, solveTime, timedOut);
@@ -112,8 +112,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
             ArrayDeque<IntSet> queueAir = new ArrayDeque<>();
             ObjectSet<IntSet> seenLocal = new ObjectOpenHashSet<>();
 
-            IntSet initial = new IntOpenHashSet();
-            initial.add(start);
+            IntSet initial = IntSet.of(start);
             queueHarvest.add(initial);
             seenLocal.add(initial);
 
@@ -128,6 +127,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
                 for (int n : neighbors) {
                     IntSet newShape = new IntOpenHashSet(current);
                     newShape.add(n);
+                    newShape = IntSets.unmodifiable(newShape);
 
                     if (!seenLocal.add(newShape)) continue;
 
@@ -277,10 +277,9 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
         }
     }
 
-    private void backtrack(int sortedIdx, List<Island> currentIslands,
-                           BitSet slimeMask, BitSet honeyMask, BitSet flyingMachineStemMask,
+    private void backtrack(int sortedIdx, List<Island> currentIslands, BitSet flyingMachineStemMask,
                            int currentOnes, int remainingPossibleTargets, int currentIslandsCount) {
-        if ((backtrackCalls++ & 0xFF) == 0 && System.currentTimeMillis() - startTime > timeoutMs) {
+        if ((backtrackCalls++ & 0xFFFF) == 0 && System.currentTimeMillis() - startTime > backtrackTimeoutMs) {
             timedOut = true;
             return;
         }
@@ -305,7 +304,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         // Pruning: target already covered?
         if (slimeMask.get(targetBit) || honeyMask.get(targetBit)) {
-            backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, flyingMachineStemMask, currentOnes, remainingPossibleTargets, currentIslandsCount);
+            backtrack(sortedIdx + 1, currentIslands, flyingMachineStemMask, currentOnes, remainingPossibleTargets, currentIslandsCount);
             return;
         }
 
@@ -326,7 +325,7 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
             byte color = slimeAdj ? HONEY : SLIME;
 
-            currentIslands.add(new Island(shape.cells, shape.flyingMachine, color));
+            currentIslands.add(new Island(shape.cells, shape.mask, shape.flyingMachine, color));
             if (slimeAdj) honeyMask.or(shape.mask);
             else slimeMask.or(shape.mask);
             flyingMachineStemMask.or(shape.flyingMachine.stemMask());
@@ -334,8 +333,6 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
             backtrack(
                     sortedIdx + 1,
                     currentIslands,
-                    slimeMask,
-                    honeyMask,
                     flyingMachineStemMask,
                     currentOnes + shape.onesCovered,
                     remainingPossibleTargets - shape.onesCovered,
@@ -352,7 +349,95 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
         // Option: skip this target
         // There are no valid shapes that cover this target
-        backtrack(sortedIdx + 1, currentIslands, slimeMask, honeyMask, flyingMachineStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
+        backtrack(sortedIdx + 1, currentIslands, flyingMachineStemMask, currentOnes, remainingPossibleTargets - 1, currentIslandsCount);
+    }
+
+    private void hillClimbSolution() {
+        int hillClimbIterations = 0;
+
+        boolean improved = true;
+        while (improved) {
+            if ((hillClimbIterations++ & 0xFFFF) == 0 && System.currentTimeMillis() - startTime > timeoutMs) {
+                timedOut = true;
+                break;
+            }
+
+            improved = false;
+
+            bestSolution.sort(Comparator.comparingInt(island -> island.cells().size()));
+
+            for (int i = 0; i < bestSolution.size(); i++) {
+                Island island = bestSolution.get(i);
+                if (island.cells().size() >= MAX_ISLAND_SIZE) continue;
+
+                IntSet neighbors = getNeighbors(island.cells());
+                for (int n : neighbors) {
+                    int nr = keyRow(n);
+                    int nc = keyCol(n);
+                    int nBit = cellBit(nr, nc);
+                    BitSet materialMask = island.material() == SLIME ? slimeMask : honeyMask;
+
+                    // Only expand into or swap with harvest cells.
+                    if (grid[nr][nc] != FaceGrid.CELL_HARVEST || isAdjacent(materialMask, island.mask(), n)) continue;
+
+                    // Expand island
+                    if (!slimeMask.get(nBit) && !honeyMask.get(nBit)) {
+                        IntSet newCells = new IntOpenHashSet(island.cells());
+                        BitSet newMask = (BitSet) island.mask().clone();
+                        newCells.add(n);
+                        newMask.set(nBit);
+                        newCells = IntSets.unmodifiable(newCells);
+
+                        materialMask.set(nBit);
+
+                        bestSolution.set(i, new Island(newCells, newMask, island.flyingMachine(), island.material()));
+
+                        improved = true;
+                        break;
+                    }
+
+                    // Swap a cell with a neighbor
+                    for (int j = 0; j < bestSolution.size(); j++) {
+                        if (i == j) continue;
+                        Island neighboring = bestSolution.get(j);
+
+                        // Try stealing this cell from the neighbor
+                        if (neighboring.mask().get(nBit) && neighboring.cells().size() > 4
+                                && !neighboring.flyingMachine().stemMask().get(nBit) && neighboring.flyingMachine().stopperCell() != n) {
+                            IntSet newCells = new IntOpenHashSet(island.cells());
+                            BitSet newMask = (BitSet) island.mask().clone();
+                            newCells.add(n);
+                            newMask.set(nBit);
+                            newCells = IntSets.unmodifiable(newCells);
+
+                            IntSet neighborNewCells = new IntOpenHashSet(neighboring.cells());
+                            BitSet neighborNewMask = (BitSet) neighboring.mask().clone();
+                            neighborNewCells.remove(n);
+                            neighborNewMask.clear(nBit);
+                            neighborNewCells = IntSets.unmodifiable(neighborNewCells);
+
+                            if (isConnected(neighborNewCells)) {
+                                if (island.material() == SLIME) {
+                                    slimeMask.set(nBit);
+                                    honeyMask.clear(nBit);
+                                } else {
+                                    slimeMask.clear(nBit);
+                                    honeyMask.set(nBit);
+                                }
+
+                                bestSolution.set(i, new Island(newCells, newMask, island.flyingMachine(), island.material()));
+                                bestSolution.set(j, new Island(neighborNewCells, neighborNewMask, neighboring.flyingMachine(), neighboring.material()));
+
+                                improved = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (improved) break;
+                }
+            }
+        }
     }
 
     private boolean isAdjacent(BitSet flyingMachineStemMask, FlyingMachine newFlyingMachine) {
@@ -361,5 +446,43 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
 
     private boolean isAdjacent(BitSet cellsMask, Shape newShape) {
         return cellsMask.intersects(newShape.neighborsMask);
+    }
+
+    private boolean isAdjacent(BitSet cellsMask, BitSet excluding, int key) {
+        for (var dir : DIRECTIONS) {
+            int adj = key + dir;
+            int nr = keyRow(adj);
+            int nc = keyCol(adj);
+
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                int bit = cellBit(nr, nc);
+                if (cellsMask.get(bit) && !excluding.get(bit)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isConnected(IntSet cells) {
+        if (cells.isEmpty()) return true;
+
+        IntSet visited = new IntOpenHashSet(cells.size());
+        IntPriorityQueue queue = new IntArrayFIFOQueue(cells.size());
+        int start = cells.iterator().nextInt();
+        queue.enqueue(start);
+        visited.add(start);
+
+        while (!queue.isEmpty()) {
+            int current = queue.dequeueInt();
+            for (int dir : DIRECTIONS) {
+                int neighbor = current + dir;
+                if (cells.contains(neighbor) && visited.add(neighbor)) {
+                    queue.enqueue(neighbor);
+                }
+            }
+        }
+
+        return visited.size() == cells.size();
     }
 }
