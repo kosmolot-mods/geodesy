@@ -27,24 +27,18 @@ as "already harvested" (so other projection directions can still try to harvest 
 
 Alternatively, if smaller flying machines are implemented, the current logic can stay.
 
-## Better calculation of actual efficiency
-
-The efficiency calculation does not consider the actual placement (or lack) of
-the flying machines - just the fact that the cluster can be projected to a side
-wall without colliding with a budding block. This also ties with the improved
-support for more types of flying machines.
-
 ## Increasing efficiency by breaking blocks
 
 This one is tied to the projection logic as well. In some cases, removing blocks
 actually increases efficiency.
 
-## Automatic sticky block clustering
+## Improved automatic sticky block clustering
 
 I am aware that this problem is NP-complete but at this size it can hopefully
 be either bruteforced or at least solved with some dynamic programming.
 Algorithmic geniuses and their PRs are welcome.
 
+Currently, we have a backtracking solver that works decently.
 Several approaches have been suggested so far, including an SAT solver.
 
 ## Decoupling from net.minecraft.world.World
