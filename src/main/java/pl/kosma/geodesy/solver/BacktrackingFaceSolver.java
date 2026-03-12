@@ -398,9 +398,9 @@ public class BacktrackingFaceSolver extends AbstractFaceSolver implements FaceSo
                     }
 
                     // Try stealing this cell from the neighboring island.
-                    if (tryTakeCell(i, island, n, nBit, j, neighboring)) {
+                    if (neighboring.cells().size() >= island.cells().size() + 2 && tryTakeCell(i, island, n, nBit, j, neighboring)) {
                         // This does not count as an improvement.
-                        i--;
+                        improved = true;
                         break;
                     }
                 }
