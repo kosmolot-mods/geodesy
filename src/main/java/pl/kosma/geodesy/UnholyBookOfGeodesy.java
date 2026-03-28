@@ -1,11 +1,11 @@
 package pl.kosma.geodesy;
 
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.WrittenBookContentComponent;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.text.RawFilteredPair;
-import net.minecraft.text.Text;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.network.Filterable;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.WrittenBookContent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +13,7 @@ import java.util.List;
 public class UnholyBookOfGeodesy {
 
     static public ItemStack summonKrivbeknih() {
-        ItemStack grimoire = Items.WRITTEN_BOOK.getDefaultStack();
+        ItemStack grimoire = Items.WRITTEN_BOOK.getDefaultInstance();
         List<String> pages = new ArrayList<>();
         pages.add(
                 """
@@ -130,7 +130,7 @@ public class UnholyBookOfGeodesy {
                 
                 Check out the mod page on Modrinth for screenshots and more detailed instructions.
                 """);
-        grimoire.set(DataComponentTypes.WRITTEN_BOOK_CONTENT, new WrittenBookContentComponent(RawFilteredPair.of("The Unholy Book of Geodesy"), "Kosmolot", 0, pages.stream().map(Text::of).map(RawFilteredPair::of).toList(), true));
+        grimoire.set(DataComponents.WRITTEN_BOOK_CONTENT, new WrittenBookContent(Filterable.passThrough("The Unholy Book of Geodesy"), "Kosmolot", 0, pages.stream().map(Component::nullToEmpty).map(Filterable::passThrough).toList(), true));
         return grimoire;
     }
 }

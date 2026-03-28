@@ -1,6 +1,6 @@
 package pl.kosma.geodesy.solver;
 
-import net.minecraft.util.math.Direction;
+import net.minecraft.core.Direction;
 
 /**
  * Represents a 2D grid of a single face of the geode projection.

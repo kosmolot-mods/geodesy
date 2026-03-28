@@ -1,26 +1,23 @@
 package pl.kosma.geodesy;
 
 import com.google.common.collect.Sets;
-import net.minecraft.block.*;
-import net.minecraft.block.entity.CommandBlockBlockEntity;
-import net.minecraft.block.entity.DropperBlockEntity;
-import net.minecraft.block.entity.HopperBlockEntity;
-import net.minecraft.block.entity.StructureBlockBlockEntity;
-import net.minecraft.block.enums.BlockFace;
-import net.minecraft.block.enums.BlockHalf;
-import net.minecraft.block.enums.StructureBlockMode;
-import net.minecraft.block.enums.WireConnection;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.state.property.Properties;
-import net.minecraft.text.Text;
-import net.minecraft.util.Pair;
-import net.minecraft.util.math.BlockBox;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Tuple;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.entity.CommandBlockEntity;
+import net.minecraft.world.level.block.entity.DropperBlockEntity;
+import net.minecraft.world.level.block.entity.HopperBlockEntity;
+import net.minecraft.world.level.block.entity.StructureBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.*;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
@@ -37,7 +34,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
-import static net.minecraft.block.Block.NOTIFY_LISTENERS;
+import static net.minecraft.world.level.block.Block.UPDATE_CLIENTS;
 
 public class GeodesyCore {
 
@@ -55,15 +52,15 @@ public class GeodesyCore {
 
     static final Logger LOGGER = LoggerFactory.getLogger("GeodesyCore");
 
-    private ServerWorld world;
+    private ServerLevel world;
     @Nullable
-    private IterableBlockBox geode;
+    private IterableBoundingBox geode;
     // The following list must contain all budding amethyst in the area.
     @Nullable
     private List<BlockPos> buddingAmethystPositions;
     @Nullable
     // The following list must contain all amethyst clusters in the area.
-    private List<Pair<BlockPos, Direction>> amethystClusterPositions;
+    private List<Tuple<BlockPos, Direction>> amethystClusterPositions;
 
     // The directions used in the last /geodesy project command.
     private Direction @Nullable [] lastProjectedDirections;
@@ -77,21 +74,21 @@ public class GeodesyCore {
     }
 
     private void fillHotbar() {
-        ServerPlayerEntity player = this.player.get();
+        ServerPlayer player = this.player.get();
         if (player == null)
             return;
-        player.getInventory().setStack(0, UnholyBookOfGeodesy.summonKrivbeknih());
-        player.getInventory().setStack(1, Items.SLIME_BLOCK.getDefaultStack());
-        player.getInventory().setStack(2, Items.HONEY_BLOCK.getDefaultStack());
-        player.getInventory().setStack(3, Items.WITHER_SKELETON_SKULL.getDefaultStack());
-        player.getInventory().setStack(4, Items.ZOMBIE_HEAD.getDefaultStack());
-        player.getInventory().setStack(5, Items.AIR.getDefaultStack());
-        player.getInventory().setStack(6, Items.AIR.getDefaultStack());
-        player.getInventory().setStack(7, Items.AIR.getDefaultStack());
-        player.getInventory().setStack(8, Items.POISONOUS_POTATO.getDefaultStack());
+        player.getInventory().setItem(0, UnholyBookOfGeodesy.summonKrivbeknih());
+        player.getInventory().setItem(1, Items.SLIME_BLOCK.getDefaultInstance());
+        player.getInventory().setItem(2, Items.HONEY_BLOCK.getDefaultInstance());
+        player.getInventory().setItem(3, Items.WITHER_SKELETON_SKULL.getDefaultInstance());
+        player.getInventory().setItem(4, Items.ZOMBIE_HEAD.getDefaultInstance());
+        player.getInventory().setItem(5, Items.AIR.getDefaultInstance());
+        player.getInventory().setItem(6, Items.AIR.getDefaultInstance());
+        player.getInventory().setItem(7, Items.AIR.getDefaultInstance());
+        player.getInventory().setItem(8, Items.POISONOUS_POTATO.getDefaultInstance());
     }
 
-    void geodesyArea(ServerWorld world, BlockPos startPos, BlockPos endPos) {
+    void geodesyArea(ServerLevel world, BlockPos startPos, BlockPos endPos) {
         sendCommandFeedback("---");
 
         this.world = world;
@@ -146,8 +143,8 @@ public class GeodesyCore {
         this.growClusters(amethystClusterPositions);
 
         // Render a frame.
-        IterableBlockBox frameBoundingBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
-        frameBoundingBox.forEachEdgePosition(blockPos -> world.setBlockState(blockPos, Blocks.MOSS_BLOCK.getDefaultState(), NOTIFY_LISTENERS));
+        IterableBoundingBox frameBoundingBox = new IterableBoundingBox(geode.inflatedBy(WALL_OFFSET));
+        frameBoundingBox.forEachEdgePosition(blockPos -> world.setBlock(blockPos, Blocks.MOSS_BLOCK.defaultBlockState(), UPDATE_CLIENTS));
 
         // Do nothing more if we have no directions - this signifies we just want
         // to draw the frame and do nothing else.
@@ -164,13 +161,13 @@ public class GeodesyCore {
         // fall on them and get stuck.
         AtomicInteger clustersLeft = new AtomicInteger();
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
-            if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AMETHYST_CLUSTER) {
+            if (world.getBlockState(blockPosDirectionPair.getA()).getBlock() == Blocks.AMETHYST_CLUSTER) {
                 clustersLeft.getAndIncrement();
-                world.setBlockState(blockPosDirectionPair.getLeft(), switch (blockPosDirectionPair.getRight()) {
-                    case DOWN -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.BLOCK_FACE, BlockFace.CEILING);
-                    case UP -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.BLOCK_FACE, BlockFace.FLOOR);
-                    default -> Blocks.SPRUCE_BUTTON.getDefaultState().with(Properties.HORIZONTAL_FACING, blockPosDirectionPair.getRight());
-                }, NOTIFY_LISTENERS);
+                world.setBlock(blockPosDirectionPair.getA(), switch (blockPosDirectionPair.getB()) {
+                    case DOWN -> Blocks.SPRUCE_BUTTON.defaultBlockState().setValue(BlockStateProperties.ATTACH_FACE, AttachFace.CEILING);
+                    case UP -> Blocks.SPRUCE_BUTTON.defaultBlockState().setValue(BlockStateProperties.ATTACH_FACE, AttachFace.FLOOR);
+                    default -> Blocks.SPRUCE_BUTTON.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, blockPosDirectionPair.getB());
+                }, UPDATE_CLIENTS);
             }
         });
         int clustersCollected = amethystClusterPositions.size() - clustersLeft.get();
@@ -257,7 +254,7 @@ public class GeodesyCore {
                 .thenRun(() -> server.execute(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready.")));
     }
 
-    private @NonNull CompletableFuture<Void> solveFace(@NotNull MinecraftServer server, @NotNull IterableBlockBox geode, SolverConfig config, FaceGrid faceGrid) {
+    private @NonNull CompletableFuture<Void> solveFace(@NotNull MinecraftServer server, @NotNull IterableBoundingBox geode, SolverConfig config, FaceGrid faceGrid) {
         // Create a new solver instance for each face (thread safety)
         return CompletableFuture.supplyAsync(() -> new BacktrackingFaceSolver(faceGrid, config).solve(faceGrid, config))
                 .exceptionally(e -> {
@@ -284,21 +281,21 @@ public class GeodesyCore {
     }
 
     // Clears sticky blocks and mob heads for a face. Allows re-running /geodesy solve.
-    private void clearSolverLayers(@NotNull IterableBlockBox geode, Direction direction) {
+    private void clearSolverLayers(@NotNull IterableBoundingBox geode, Direction direction) {
         // Calculate grid dimensions based on the direction
         int width, height;
         switch (direction.getAxis()) {
             case X -> {
-                width = geode.getMaxZ() - geode.getMinZ() + 1;
-                height = geode.getMaxY() - geode.getMinY() + 1;
+                width = geode.maxZ() - geode.minZ() + 1;
+                height = geode.maxY() - geode.minY() + 1;
             }
             case Y -> {
-                width = geode.getMaxX() - geode.getMinX() + 1;
-                height = geode.getMaxZ() - geode.getMinZ() + 1;
+                width = geode.maxX() - geode.minX() + 1;
+                height = geode.maxZ() - geode.minZ() + 1;
             }
             case Z -> {
-                width = geode.getMaxX() - geode.getMinX() + 1;
-                height = geode.getMaxY() - geode.getMinY() + 1;
+                width = geode.maxX() - geode.minX() + 1;
+                height = geode.maxY() - geode.minY() + 1;
             }
             default -> {
                 return;
@@ -306,7 +303,7 @@ public class GeodesyCore {
         }
 
         // Clear both layers (wall+1 for sticky blocks, wall+2 for mob heads)
-        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
                 setMutableToWallPos(geode, mutablePos, direction, x, y);
@@ -315,14 +312,14 @@ public class GeodesyCore {
                 mutablePos.move(direction, 1);
                 Block stickyBlock = world.getBlockState(mutablePos).getBlock();
                 if (STICKY_BLOCKS.contains(stickyBlock)) {
-                    world.setBlockState(mutablePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                    world.setBlock(mutablePos, Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
                 }
 
                 // Clear mob head layer (wall + 2)
                 mutablePos.move(direction, 1);
                 Block headBlock = world.getBlockState(mutablePos).getBlock();
                 if (MARKERS_BLOCKER.contains(headBlock) || MARKERS_MACHINE.contains(headBlock)) {
-                    world.setBlockState(mutablePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                    world.setBlock(mutablePos, Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
                 }
             }
         }
@@ -330,25 +327,25 @@ public class GeodesyCore {
 
     // Extracts a FaceGrid from the world. Reads wall blocks placed by /geodesy project.
     @Nullable
-    private FaceGrid extractFaceGrid(@NotNull IterableBlockBox geode, Direction direction) {
+    private FaceGrid extractFaceGrid(@NotNull IterableBoundingBox geode, Direction direction) {
         // Calculate grid dimensions based on the direction.
         // For each direction, we need to map the wall to a 2D grid.
         int width, height;
         switch (direction.getAxis()) {
             case X -> {
                 // East/West face: Z is width, Y is height
-                width = geode.getMaxZ() - geode.getMinZ() + 1;
-                height = geode.getMaxY() - geode.getMinY() + 1;
+                width = geode.maxZ() - geode.minZ() + 1;
+                height = geode.maxY() - geode.minY() + 1;
             }
             case Y -> {
                 // Up/Down face: X is width, Z is height
-                width = geode.getMaxX() - geode.getMinX() + 1;
-                height = geode.getMaxZ() - geode.getMinZ() + 1;
+                width = geode.maxX() - geode.minX() + 1;
+                height = geode.maxZ() - geode.minZ() + 1;
             }
             case Z -> {
                 // North/South face: X is width, Y is height
-                width = geode.getMaxX() - geode.getMinX() + 1;
-                height = geode.getMaxY() - geode.getMinY() + 1;
+                width = geode.maxX() - geode.minX() + 1;
+                height = geode.maxY() - geode.minY() + 1;
             }
             default -> {
                 return null;
@@ -358,7 +355,7 @@ public class GeodesyCore {
         FaceGrid grid = new FaceGrid(width, height, direction);
 
         // Iterate through the wall and populate the grid.
-        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         for (int x = 0; x < width; x++) {
             for (int y = 0; y < height; y++) {
                 setMutableToWallPos(geode, mutablePos, direction, x, y);
@@ -380,51 +377,51 @@ public class GeodesyCore {
     }
 
     // Converts grid coordinates to world wall position.
-    private static BlockPos.Mutable gridToWallPos(@NotNull IterableBlockBox geode, Direction direction, int gridX, int gridY) {
+    private static BlockPos.MutableBlockPos gridToWallPos(@NotNull IterableBoundingBox geode, Direction direction, int gridX, int gridY) {
         return switch (direction) {
-            case EAST -> new BlockPos.Mutable(
-                    geode.getMaxX() + WALL_OFFSET,
-                    geode.getMinY() + gridY,
-                    geode.getMinZ() + gridX);
-            case WEST -> new BlockPos.Mutable(
-                    geode.getMinX() - WALL_OFFSET,
-                    geode.getMinY() + gridY,
-                    geode.getMinZ() + gridX);
-            case UP -> new BlockPos.Mutable(
-                    geode.getMinX() + gridX,
-                    geode.getMaxY() + WALL_OFFSET,
-                    geode.getMinZ() + gridY);
-            case DOWN -> new BlockPos.Mutable(
-                    geode.getMinX() + gridX,
-                    geode.getMinY() - WALL_OFFSET,
-                    geode.getMinZ() + gridY);
-            case SOUTH -> new BlockPos.Mutable(
-                    geode.getMinX() + gridX,
-                    geode.getMinY() + gridY,
-                    geode.getMaxZ() + WALL_OFFSET);
-            case NORTH -> new BlockPos.Mutable(
-                    geode.getMinX() + gridX,
-                    geode.getMinY() + gridY,
-                    geode.getMinZ() - WALL_OFFSET);
+            case EAST -> new BlockPos.MutableBlockPos(
+                    geode.maxX() + WALL_OFFSET,
+                    geode.minY() + gridY,
+                    geode.minZ() + gridX);
+            case WEST -> new BlockPos.MutableBlockPos(
+                    geode.minX() - WALL_OFFSET,
+                    geode.minY() + gridY,
+                    geode.minZ() + gridX);
+            case UP -> new BlockPos.MutableBlockPos(
+                    geode.minX() + gridX,
+                    geode.maxY() + WALL_OFFSET,
+                    geode.minZ() + gridY);
+            case DOWN -> new BlockPos.MutableBlockPos(
+                    geode.minX() + gridX,
+                    geode.minY() - WALL_OFFSET,
+                    geode.minZ() + gridY);
+            case SOUTH -> new BlockPos.MutableBlockPos(
+                    geode.minX() + gridX,
+                    geode.minY() + gridY,
+                    geode.maxZ() + WALL_OFFSET);
+            case NORTH -> new BlockPos.MutableBlockPos(
+                    geode.minX() + gridX,
+                    geode.minY() + gridY,
+                    geode.minZ() - WALL_OFFSET);
         };
     }
 
     // Sets a mutable BlockPos to the wall position for given grid coordinates.
-    private static void setMutableToWallPos(@NotNull IterableBlockBox geode, BlockPos.Mutable pos, Direction direction, int gridX, int gridY) {
+    private static void setMutableToWallPos(@NotNull IterableBoundingBox geode, BlockPos.MutableBlockPos pos, Direction direction, int gridX, int gridY) {
         switch (direction) {
-            case EAST -> pos.set(geode.getMaxX() + WALL_OFFSET, geode.getMinY() + gridY, geode.getMinZ() + gridX);
-            case WEST -> pos.set(geode.getMinX() - WALL_OFFSET, geode.getMinY() + gridY, geode.getMinZ() + gridX);
-            case UP -> pos.set(geode.getMinX() + gridX, geode.getMaxY() + WALL_OFFSET, geode.getMinZ() + gridY);
-            case DOWN -> pos.set(geode.getMinX() + gridX, geode.getMinY() - WALL_OFFSET, geode.getMinZ() + gridY);
-            case SOUTH -> pos.set(geode.getMinX() + gridX, geode.getMinY() + gridY, geode.getMaxZ() + WALL_OFFSET);
-            case NORTH -> pos.set(geode.getMinX() + gridX, geode.getMinY() + gridY, geode.getMinZ() - WALL_OFFSET);
+            case EAST -> pos.set(geode.maxX() + WALL_OFFSET, geode.minY() + gridY, geode.minZ() + gridX);
+            case WEST -> pos.set(geode.minX() - WALL_OFFSET, geode.minY() + gridY, geode.minZ() + gridX);
+            case UP -> pos.set(geode.minX() + gridX, geode.maxY() + WALL_OFFSET, geode.minZ() + gridY);
+            case DOWN -> pos.set(geode.minX() + gridX, geode.minY() - WALL_OFFSET, geode.minZ() + gridY);
+            case SOUTH -> pos.set(geode.minX() + gridX, geode.minY() + gridY, geode.maxZ() + WALL_OFFSET);
+            case NORTH -> pos.set(geode.minX() + gridX, geode.minY() + gridY, geode.minZ() - WALL_OFFSET);
         }
     }
 
     // Applies solver result: places slime/honey blocks and mob heads.
-    private void applySolverResult(@NotNull IterableBlockBox geode, Direction direction, SolverResult result) {
+    private void applySolverResult(@NotNull IterableBoundingBox geode, Direction direction, SolverResult result) {
         // Place sticky blocks for each cell
-        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
         for (int x = 0; x < result.width(); x++) {
             for (int y = 0; y < result.height(); y++) {
                 byte placement = result.getPlacement(x, y);
@@ -443,7 +440,7 @@ public class GeodesyCore {
                 };
 
                 if (blockToPlace != null) {
-                    world.setBlockState(mutablePos, blockToPlace.getDefaultState(), NOTIFY_LISTENERS);
+                    world.setBlock(mutablePos, blockToPlace.defaultBlockState(), UPDATE_CLIENTS);
                 }
             }
         }
@@ -456,7 +453,7 @@ public class GeodesyCore {
 
     // Places mob heads in L-shape pattern: 3 zombie heads + 1 wither skeleton skull.
     // Uses the pre-computed L-shape data from the solver result.
-    private void placeMobHeadsForIsland(@NotNull IterableBlockBox geode, Direction direction, AbstractFaceSolver.Island island) {
+    private void placeMobHeadsForIsland(@NotNull IterableBoundingBox geode, Direction direction, AbstractFaceSolver.Island island) {
         if (island.flyingMachine() == null || island.flyingMachine().stemCells() == null || island.flyingMachine().stemCells().size() != 3) {
             LOGGER.warn("Island with unexpected L-shape: {}. Island: {}", island.flyingMachine(), island);
             sendCommandFeedback("Island with unexpected L-shape: %s. Island: %s", island.flyingMachine(), island);
@@ -478,10 +475,10 @@ public class GeodesyCore {
     private void placeSkull(BlockPos pos, Block floorVariant, Block wallVariant, Direction faceDirection) {
         if (faceDirection == Direction.UP || faceDirection == Direction.DOWN) {
             // Floor variant for up/down faces
-            world.setBlockState(pos, floorVariant.getDefaultState(), NOTIFY_LISTENERS);
+            world.setBlock(pos, floorVariant.defaultBlockState(), UPDATE_CLIENTS);
         } else {
             // Wall variant for horizontal faces
-            world.setBlockState(pos, wallVariant.getDefaultState().with(Properties.HORIZONTAL_FACING, faceDirection), NOTIFY_LISTENERS);
+            world.setBlock(pos, wallVariant.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, faceDirection), UPDATE_CLIENTS);
         }
     }
 
@@ -493,20 +490,20 @@ public class GeodesyCore {
         }
 
         // Plop the clock at the top
-        BlockPos clockPos = new BlockPos((geode.getMinX() + geode.getMaxX()) / 2 + 3, geode.getMaxY() + CLOCK_Y_OFFSET, (geode.getMinZ() + geode.getMaxZ()) / 2 + 1);
+        BlockPos clockPos = new BlockPos((geode.minX() + geode.maxX()) / 2 + 3, geode.maxY() + CLOCK_Y_OFFSET, (geode.minZ() + geode.maxZ()) / 2 + 1);
         BlockPos torchPos = buildClock(clockPos, Direction.WEST, Direction.NORTH);
 
         // Run along all the axes and move all slime/honey blocks inside the frame.
         for (Direction direction : Direction.values()) {
             geode.slice(direction.getAxis(), slice -> {
                 // Calculate positions of the source and target blocks for moving.
-                BlockPos targetPos = slice.getEndpoint(direction).offset(direction, WALL_OFFSET);
-                BlockPos sourcePos = targetPos.offset(direction, 1);
+                BlockPos targetPos = slice.getEndpoint(direction).relative(direction, WALL_OFFSET);
+                BlockPos sourcePos = targetPos.relative(direction, 1);
                 Block sourceBlock = world.getBlockState(sourcePos).getBlock();
                 // Check that the operation can succeed.
                 if (STICKY_BLOCKS.contains(sourceBlock)) {
-                    world.setBlockState(targetPos, world.getBlockState(sourcePos), NOTIFY_LISTENERS);
-                    world.setBlockState(sourcePos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                    world.setBlock(targetPos, world.getBlockState(sourcePos), UPDATE_CLIENTS);
+                    world.setBlock(sourcePos, Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
                 }
             });
         }
@@ -516,21 +513,21 @@ public class GeodesyCore {
             List<BlockPos> triggerObserverPositions = new ArrayList<>();
             geode.slice(slicingDirection.getAxis(), slice -> {
                 // Check for blocker marker block.
-                BlockPos blockerPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET + 2);
-                BlockPos oppositeWallPos = slice.getEndpoint(slicingDirection.getOpposite()).offset(slicingDirection, -WALL_OFFSET);
+                BlockPos blockerPos = slice.getEndpoint(slicingDirection).relative(slicingDirection, WALL_OFFSET + 2);
+                BlockPos oppositeWallPos = slice.getEndpoint(slicingDirection.getOpposite()).relative(slicingDirection, -WALL_OFFSET);
                 if (!MARKERS_BLOCKER.contains(world.getBlockState(blockerPos).getBlock()))
                     return;
                 // Read the sticky block at blocker position.
-                BlockPos stickyPos = slice.getEndpoint(slicingDirection).offset(slicingDirection, WALL_OFFSET);
+                BlockPos stickyPos = slice.getEndpoint(slicingDirection).relative(slicingDirection, WALL_OFFSET);
                 Block stickyBlock = world.getBlockState(stickyPos).getBlock();
 
                 // Find the position of the first machine block.
                 BlockPos firstMachinePos = null;
                 for (Direction direction : Direction.values()) {
                     // Check there is a machine marker block and the sticky block is the correct type
-                    if (MARKERS_MACHINE.contains(world.getBlockState(blockerPos.offset(direction)).getBlock())
-                            && world.getBlockState(blockerPos.offset(direction).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
-                        firstMachinePos = blockerPos.offset(direction);
+                    if (MARKERS_MACHINE.contains(world.getBlockState(blockerPos.relative(direction)).getBlock())
+                            && world.getBlockState(blockerPos.relative(direction).relative(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
+                        firstMachinePos = blockerPos.relative(direction);
                         break;
                     }
                 }
@@ -541,19 +538,19 @@ public class GeodesyCore {
                 Direction machineDirection = null;
                 for (Direction direction : Direction.values()) {
                     // Check there is a machine marker block and the sticky block is the correct type
-                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock())
-                            && MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 2)).getBlock())
-                            && world.getBlockState(firstMachinePos.offset(direction, 1).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock
-                            && world.getBlockState(firstMachinePos.offset(direction, 2).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
+                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.relative(direction, 1)).getBlock())
+                            && MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.relative(direction, 2)).getBlock())
+                            && world.getBlockState(firstMachinePos.relative(direction, 1).relative(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock
+                            && world.getBlockState(firstMachinePos.relative(direction, 2).relative(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
                         machineDirection = direction;
                         break;
                     }
                     // Check there is a machine marker block and the sticky block is the correct type
-                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, -1)).getBlock())
-                            && MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.offset(direction, 1)).getBlock())
-                            && world.getBlockState(firstMachinePos.offset(direction, -1).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock
-                            && world.getBlockState(firstMachinePos.offset(direction, 1).offset(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
-                        firstMachinePos = firstMachinePos.offset(direction, -1);
+                    if (MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.relative(direction, -1)).getBlock())
+                            && MARKERS_MACHINE.contains(world.getBlockState(firstMachinePos.relative(direction, 1)).getBlock())
+                            && world.getBlockState(firstMachinePos.relative(direction, -1).relative(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock
+                            && world.getBlockState(firstMachinePos.relative(direction, 1).relative(slicingDirection.getOpposite(), 2)).getBlock() == stickyBlock) {
+                        firstMachinePos = firstMachinePos.relative(direction, -1);
                         machineDirection = direction;
                         break;
                     }
@@ -571,9 +568,9 @@ public class GeodesyCore {
                 // Important: the actual machine is built one block closer to the geode
                 // than the player-placed markers are. Also wipe out the blocker marker because
                 // it doesn't get removed otherwise.
-                world.setBlockState(blockerPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
-                blockerPos = blockerPos.offset(slicingDirection.getOpposite());
-                firstMachinePos = firstMachinePos.offset(slicingDirection.getOpposite());
+                world.setBlock(blockerPos, Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
+                blockerPos = blockerPos.relative(slicingDirection.getOpposite());
+                firstMachinePos = firstMachinePos.relative(slicingDirection.getOpposite());
                 // All good - build the machine.
                 BlockPos triggerObserverPosition = buildMachine(blockerPos, firstMachinePos, slicingDirection, machineDirection, stickyBlock, oppositeWallPos);
                 triggerObserverPositions.add(triggerObserverPosition);
@@ -594,7 +591,7 @@ public class GeodesyCore {
         }
 
         // Fill all gaps in walls with moss. This should be way cheaper than using tons of obsidian.
-        IterableBlockBox wallsBox = new IterableBlockBox(geode.expand(WALL_OFFSET));
+        IterableBoundingBox wallsBox = new IterableBoundingBox(geode.expand(WALL_OFFSET));
         buildWalls(wallsBox);
 
         // Generate the water collection system.
@@ -607,30 +604,30 @@ public class GeodesyCore {
             return;
 
         // Calculate the volume containing the trigger observers.
-        BlockBox observersVolume = BlockBox.encompassPositions(observerPositions).orElseThrow();
+        BoundingBox observersVolume = BoundingBox.encapsulatingPositions(observerPositions).orElseThrow();
 
         // Calculate the lower edge of the trigger volume (shaped 1x1xN blocks).
-        IterableBlockBox triggerVolumeLowerEdge = new IterableBlockBox(
-                observersVolume.getMinX(), observersVolume.getMinY(), observersVolume.getMinZ(),
-                observersVolume.getMaxX(), observersVolume.getMinY(), observersVolume.getMaxZ());
+        IterableBoundingBox triggerVolumeLowerEdge = new IterableBoundingBox(
+                observersVolume.minX(), observersVolume.minY(), observersVolume.minZ(),
+                observersVolume.maxX(), observersVolume.minY(), observersVolume.maxZ());
 
         // Build the trigger wiring along the lower edge.
         triggerVolumeLowerEdge.forEachPosition(triggerPos -> {
             // Calculate the 1x1 vertical box that encompasses all the possible observer positions in the current slice.
-            IterableBlockBox observersBox = new IterableBlockBox(
-                triggerPos.getX(), observersVolume.getMinY(), triggerPos.getZ(),
-                triggerPos.getX(), observersVolume.getMaxY(), triggerPos.getZ());
+            IterableBoundingBox observersBox = new IterableBoundingBox(
+                triggerPos.getX(), observersVolume.minY(), triggerPos.getZ(),
+                triggerPos.getX(), observersVolume.maxY(), triggerPos.getZ());
 
             // Create a list of all needed scaffolding positions in this slice.
             List<BlockPos> scaffoldingPositions = observerPositions.stream()
                     // Extract all the observers belonging to the current slice
-                    .filter(observersBox::contains)
+                    .filter(observersBox::isInside)
                     // Offset them all one block out, to become needed scaffolding positions
-                    .map(blockPos -> blockPos.offset(slicingDirection))
+                    .map(blockPos -> blockPos.relative(slicingDirection))
                     .collect(Collectors.toList());
             if (!scaffoldingPositions.isEmpty()) {
                 // Add the bottom scaffolding, which is always needed no matter what.
-                scaffoldingPositions.add(triggerPos.offset(slicingDirection));
+                scaffoldingPositions.add(triggerPos.relative(slicingDirection));
             }
 
             /*
@@ -655,24 +652,24 @@ public class GeodesyCore {
              */
 
             // Place solid block and redstone wire - these are always placed.
-            world.setBlockState(triggerPos.offset(slicingDirection, 3).offset(Direction.UP, -2), FULL_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
-            world.setBlockState(triggerPos.offset(slicingDirection, 3).offset(Direction.UP, -1), Blocks.REDSTONE_WIRE.getDefaultState(), NOTIFY_LISTENERS);
+            world.setBlock(triggerPos.relative(slicingDirection, 3).relative(Direction.UP, -2), FULL_BLOCK.defaultBlockState(), UPDATE_CLIENTS);
+            world.setBlock(triggerPos.relative(slicingDirection, 3).relative(Direction.UP, -1), Blocks.REDSTONE_WIRE.defaultBlockState(), UPDATE_CLIENTS);
 
             // The rest of wiring only applies if there are any observers present.
             if (!scaffoldingPositions.isEmpty()) {
-                world.setBlockState(triggerPos.offset(slicingDirection, 1).offset(Direction.UP, -1), Blocks.IRON_TRAPDOOR.getDefaultState().with(TrapdoorBlock.FACING, slicingDirection).with(TrapdoorBlock.HALF, BlockHalf.TOP), NOTIFY_LISTENERS);
-                world.setBlockState(triggerPos.offset(slicingDirection, 2).offset(Direction.UP, -1), Blocks.TARGET.getDefaultState(), NOTIFY_LISTENERS);
-                world.setBlockState(triggerPos.offset(slicingDirection, 2).offset(Direction.UP, 0), Blocks.SCAFFOLDING.getDefaultState().with(ScaffoldingBlock.DISTANCE, 0), NOTIFY_LISTENERS);
-                IterableBlockBox scaffoldingBox = new IterableBlockBox(BlockBox.encompassPositions(scaffoldingPositions).orElseThrow());
+                world.setBlock(triggerPos.relative(slicingDirection, 1).relative(Direction.UP, -1), Blocks.IRON_TRAPDOOR.defaultBlockState().setValue(TrapDoorBlock.FACING, slicingDirection).setValue(TrapDoorBlock.HALF, Half.TOP), UPDATE_CLIENTS);
+                world.setBlock(triggerPos.relative(slicingDirection, 2).relative(Direction.UP, -1), Blocks.TARGET.defaultBlockState(), UPDATE_CLIENTS);
+                world.setBlock(triggerPos.relative(slicingDirection, 2).relative(Direction.UP, 0), Blocks.SCAFFOLDING.defaultBlockState().setValue(ScaffoldingBlock.DISTANCE, 0), UPDATE_CLIENTS);
+                IterableBoundingBox scaffoldingBox = new IterableBoundingBox(BoundingBox.encapsulatingPositions(scaffoldingPositions).orElseThrow());
                 scaffoldingBox.forEachPosition(scaffoldingPos ->
-                        world.setBlockState(scaffoldingPos, Blocks.SCAFFOLDING.getDefaultState().with(ScaffoldingBlock.DISTANCE, 0), NOTIFY_LISTENERS)
+                        world.setBlock(scaffoldingPos, Blocks.SCAFFOLDING.defaultBlockState().setValue(ScaffoldingBlock.DISTANCE, 0), UPDATE_CLIENTS)
                 );
             }
         });
 
         // Place all the observers last, so they don't trigger.
         observerPositions.forEach(observerPos ->
-                world.setBlockState(observerPos, Blocks.OBSERVER.getDefaultState().with(Properties.FACING, slicingDirection), NOTIFY_LISTENERS)
+                world.setBlock(observerPos, Blocks.OBSERVER.defaultBlockState().setValue(BlockStateProperties.FACING, slicingDirection), UPDATE_CLIENTS)
         );
     }
 
@@ -684,53 +681,53 @@ public class GeodesyCore {
          * 2. On the Z axis, there are lines running from each trigger point down to the center line.
          */
 
-        List<IterableBlockBox> lines = new ArrayList<>();
+        List<IterableBoundingBox> lines = new ArrayList<>();
 
         // The Z lines are per-observer.
-        observerPositions.forEach(blockPos -> lines.add(new IterableBlockBox(
+        observerPositions.forEach(blockPos -> lines.add(new IterableBoundingBox(
                 blockPos.getX(), blockPos.getY(), blockPos.getZ(),
                 blockPos.getX(), blockPos.getY(), torchPos.getZ())
         ));
 
         // The X axis line needs to connect to the trigger position area - add it.
         // It's okay to modify it here, as no other code uses it.
-        observerPositions.add(torchPos.offset(Direction.DOWN, 2));
-        IterableBlockBox xLineArea = new IterableBlockBox(BlockBox.encompassPositions(observerPositions).orElseThrow());
-        IterableBlockBox xLine = new IterableBlockBox(
-            xLineArea.getMinX(), xLineArea.getMinY(), torchPos.getZ(),
-            xLineArea.getMaxX(), xLineArea.getMinY(), torchPos.getZ());
+        observerPositions.add(torchPos.relative(Direction.DOWN, 2));
+        IterableBoundingBox xLineArea = new IterableBoundingBox(BoundingBox.encapsulatingPositions(observerPositions).orElseThrow());
+        IterableBoundingBox xLine = new IterableBoundingBox(
+            xLineArea.minX(), xLineArea.minY(), torchPos.getZ(),
+            xLineArea.maxX(), xLineArea.minY(), torchPos.getZ());
         lines.add(xLine);
 
         // Create all the lines with redstone dust on top.
         lines.forEach(blockBox -> blockBox.forEachPosition(blockPos -> {
             // Place a solid block if it's not already there.
             if (world.getBlockState(blockPos).getBlock() == Blocks.AIR)
-                world.setBlockState(blockPos, FULL_BLOCK.getDefaultState());
+                world.setBlockAndUpdate(blockPos, FULL_BLOCK.defaultBlockState());
             // Place redstone dust on top if it's not already there.
-            if (world.getBlockState(blockPos.offset(Direction.UP)).getBlock() == Blocks.AIR)
-                world.setBlockState(blockPos.offset(Direction.UP), Blocks.REDSTONE_WIRE.getDefaultState());
+            if (world.getBlockState(blockPos.relative(Direction.UP)).getBlock() == Blocks.AIR)
+                world.setBlockAndUpdate(blockPos.relative(Direction.UP), Blocks.REDSTONE_WIRE.defaultBlockState());
         }));
     }
 
-    private void buildWalls(IterableBlockBox wallsBox) {
+    private void buildWalls(IterableBoundingBox wallsBox) {
         for (Direction slicingDirection : Direction.values()) {
             // Top wall (lid) is transparent, but we still run the processing
             // to remove all blocks that should be removed.
             BlockState wallBlock = (slicingDirection == Direction.UP) ?
-                    Blocks.AIR.getDefaultState() :
-                    Blocks.MOSS_BLOCK.getDefaultState();
-            wallsBox.slice(slicingDirection.getAxis(), iterableBlockBox -> {
-                BlockPos end = iterableBlockBox.getEndpoint(slicingDirection);
+                    Blocks.AIR.defaultBlockState() :
+                    Blocks.MOSS_BLOCK.defaultBlockState();
+            wallsBox.slice(slicingDirection.getAxis(), iterableBoundingBox -> {
+                BlockPos end = iterableBoundingBox.getEndpoint(slicingDirection);
                 if (!PRESERVE_WALL_BLOCKS.contains(world.getBlockState(end).getBlock()))
-                    world.setBlockState(end, wallBlock);
+                    world.setBlockAndUpdate(end, wallBlock);
             });
         }
     }
 
     @SuppressWarnings("SameParameterValue")
-    private void prepareWorkArea(@NotNull IterableBlockBox geode, boolean force) {
-        IterableBlockBox workBoundingBox = new IterableBlockBox(geode.expand(BUILD_MARGIN));
-        BlockPos commandBlockPos = new BlockPos(workBoundingBox.getMaxX(), workBoundingBox.getMaxY(), workBoundingBox.getMaxZ());
+    private void prepareWorkArea(@NotNull IterableBoundingBox geode, boolean force) {
+        IterableBoundingBox workBoundingBox = new IterableBoundingBox(geode.expand(BUILD_MARGIN));
+        BlockPos commandBlockPos = new BlockPos(workBoundingBox.maxX(), workBoundingBox.maxY(), workBoundingBox.maxZ());
 
         // Check for existing command block, bail out if found.
         if (!force) {
@@ -741,33 +738,33 @@ public class GeodesyCore {
         // Wipe out the area (except stuff we preserve)
         workBoundingBox.forEachPosition(blockPos -> {
             if (!PRESERVE_BLOCKS.contains(world.getBlockState(blockPos).getBlock()))
-                world.setBlockState(blockPos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
+                world.setBlock(blockPos, Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
         });
 
         // Place walls inside to prevent water and falling blocks from going bonkers.
-        IterableBlockBox wallsBoundingBox = new IterableBlockBox(workBoundingBox.expand(1));
+        IterableBoundingBox wallsBoundingBox = new IterableBoundingBox(workBoundingBox.expand(1));
         wallsBoundingBox.forEachWallPosition(blockPos -> {
             if (!PRESERVE_BLOCKS.contains(world.getBlockState(blockPos).getBlock()))
-                world.setBlockState(blockPos, WORK_AREA_WALL.getDefaultState(), NOTIFY_LISTENERS);
+                world.setBlock(blockPos, WORK_AREA_WALL.defaultBlockState(), UPDATE_CLIENTS);
         });
 
         // Add a command block to allow the player to reexecute the command easily.
         String resumeCommand = String.format("/geodesy area %d %d %d %d %d %d",
-                geode.getMinX(), geode.getMinY(), geode.getMinZ(), geode.getMaxX(), geode.getMaxY(), geode.getMaxZ());
+                geode.minX(), geode.minY(), geode.minZ(), geode.maxX(), geode.maxY(), geode.maxZ());
 
-        world.setBlockState(commandBlockPos, Blocks.COMMAND_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
-        CommandBlockBlockEntity commandBlock = (CommandBlockBlockEntity) world.getBlockEntity(commandBlockPos);
+        world.setBlock(commandBlockPos, Blocks.COMMAND_BLOCK.defaultBlockState(), UPDATE_CLIENTS);
+        CommandBlockEntity commandBlock = (CommandBlockEntity) world.getBlockEntity(commandBlockPos);
         if (commandBlock == null) {
             LOGGER.error("Command blocks are disabled on the server - unable to save the resume command.");
             return;
         }
-        commandBlock.getCommandExecutor().setCommand(resumeCommand);
-        commandBlock.markDirty();
+        commandBlock.getCommandBlock().setCommand(resumeCommand);
+        commandBlock.setChanged();
     }
 
     private void detectGeode(BlockPos pos1, BlockPos pos2) {
         // Calculate the correct min/max coordinates and construct a box.
-        IterableBlockBox scanBox = new IterableBlockBox(new BlockBox(
+        IterableBoundingBox scanBox = new IterableBoundingBox(new BoundingBox(
                 Math.min(pos1.getX(), pos2.getX()),
                 Math.min(pos1.getY(), pos2.getY()),
                 Math.min(pos1.getZ(), pos2.getZ()),
@@ -807,25 +804,25 @@ public class GeodesyCore {
             sendCommandFeedback("Geode found. Now verify it's detected correctly and run /geodesy analyze.");
         }
         // Expand 1 to make sure we grab all the amethyst clusters as well.
-        geode = new IterableBlockBox(minX.get(), minY.get(), minZ.get(), maxX.get(), maxY.get(), maxZ.get()).expand(1);
+        geode = new IterableBoundingBox(minX.get(), minY.get(), minZ.get(), maxX.get(), maxY.get(), maxZ.get()).expand(1);
     }
 
-    private void highlightGeode(@NotNull IterableBlockBox geode) {
+    private void highlightGeode(@NotNull IterableBoundingBox geode) {
         // Highlight the geode area.
         int commandBlockOffset = WALL_OFFSET + 1;
-        BlockPos structureBlockPos = new BlockPos(geode.getMinX() - commandBlockOffset, geode.getMinY() - commandBlockOffset, geode.getMinZ() - commandBlockOffset);
-        BlockState structureBlockState = Blocks.STRUCTURE_BLOCK.getDefaultState().with(StructureBlock.MODE, StructureBlockMode.SAVE);
-        world.setBlockState(structureBlockPos, structureBlockState, NOTIFY_LISTENERS);
-        StructureBlockBlockEntity structure = (StructureBlockBlockEntity) world.getBlockEntity(structureBlockPos);
+        BlockPos structureBlockPos = new BlockPos(geode.minX() - commandBlockOffset, geode.minY() - commandBlockOffset, geode.minZ() - commandBlockOffset);
+        BlockState structureBlockState = Blocks.STRUCTURE_BLOCK.defaultBlockState().setValue(StructureBlock.MODE, StructureMode.SAVE);
+        world.setBlock(structureBlockPos, structureBlockState, UPDATE_CLIENTS);
+        StructureBlockEntity structure = (StructureBlockEntity) world.getBlockEntity(structureBlockPos);
         if (structure == null) {
             LOGGER.error("StructureBlock tile entity is missing... this should never happen????");
             return;
         }
-        structure.setTemplateName("geodesy:geode");
-        structure.setOffset(new BlockPos(commandBlockOffset, commandBlockOffset, commandBlockOffset));
-        structure.setSize(geode.getDimensions().add(1, 1, 1));
+        structure.setStructureName("geodesy:geode");
+        structure.setStructurePos(new BlockPos(commandBlockOffset, commandBlockOffset, commandBlockOffset));
+        structure.setStructureSize(geode.getLength().offset(1, 1, 1));
         structure.setShowBoundingBox(true);
-        structure.markDirty();
+        structure.setChanged();
     }
 
     /**
@@ -835,9 +832,9 @@ public class GeodesyCore {
         amethystClusterPositions = new ArrayList<>();
         buddingAmethystPositions.forEach(blockPos -> {
             for (Direction direction : Direction.values()) {
-                BlockPos budPos = blockPos.offset(direction);
+                BlockPos budPos = blockPos.relative(direction);
                 if (world.getBlockState(budPos).getBlock() == Blocks.AIR) {
-                    amethystClusterPositions.add(new Pair<>(budPos, direction));
+                    amethystClusterPositions.add(new Tuple<>(budPos, direction));
                 }
             }
         });
@@ -846,10 +843,10 @@ public class GeodesyCore {
     /**
      * Set all the clusters positions to cluster blocks if it is currently air.
      */
-    private void growClusters(@NotNull List<Pair<BlockPos, Direction>> amethystClusterPositions) {
+    private void growClusters(@NotNull List<Tuple<BlockPos, Direction>> amethystClusterPositions) {
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
-            if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AIR) {
-                world.setBlockState(blockPosDirectionPair.getLeft(), Blocks.AMETHYST_CLUSTER.getDefaultState().with(AmethystClusterBlock.FACING, blockPosDirectionPair.getRight()));
+            if (world.getBlockState(blockPosDirectionPair.getA()).getBlock() == Blocks.AIR) {
+                world.setBlockAndUpdate(blockPosDirectionPair.getA(), Blocks.AMETHYST_CLUSTER.defaultBlockState().setValue(AmethystClusterBlock.FACING, blockPosDirectionPair.getB()));
             }
         });
     }
@@ -862,25 +859,25 @@ public class GeodesyCore {
      * @param direction The direction to project the geode to.
      * @author Kosma Moczek, Kevinthegreat
      */
-    private void projectGeode(@NotNull IterableBlockBox geode, List<BlockPos> buddingAmethystPositions, List<Pair<BlockPos, Direction>> amethystClusterPositions, Direction direction) {
+    private void projectGeode(@NotNull IterableBoundingBox geode, List<BlockPos> buddingAmethystPositions, List<Tuple<BlockPos, Direction>> amethystClusterPositions, Direction direction) {
         // Mark wall for slices with budding amethysts.
         buddingAmethystPositions.forEach(blockPos -> {
             BlockPos wallPos = getWallPos(geode, blockPos, direction);
-            world.setBlockState(wallPos, Blocks.CRYING_OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+            world.setBlock(wallPos, Blocks.CRYING_OBSIDIAN.defaultBlockState(), UPDATE_CLIENTS);
         });
         // Mark wall for slices that needs to be harvested and have no budding amethysts.
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
             // Check if the cluster is harvested.
-            if (world.getBlockState(blockPosDirectionPair.getLeft()).getBlock() == Blocks.AMETHYST_CLUSTER) {
-                BlockPos wallPos = getWallPos(geode, blockPosDirectionPair.getLeft(), direction);
-                BlockPos oppositeWallPos = getWallPos(geode, blockPosDirectionPair.getLeft(), direction.getOpposite());
+            if (world.getBlockState(blockPosDirectionPair.getA()).getBlock() == Blocks.AMETHYST_CLUSTER) {
+                BlockPos wallPos = getWallPos(geode, blockPosDirectionPair.getA(), direction);
+                BlockPos oppositeWallPos = getWallPos(geode, blockPosDirectionPair.getA(), direction.getOpposite());
                 // Check if the slice is marked with budding amethyst.
                 if (world.getBlockState(wallPos).getBlock() != Blocks.CRYING_OBSIDIAN) {
                     // Mark all clusters in the slice as harvested.
-                    BlockPos.iterate(wallPos, oppositeWallPos).forEach(pos ->
-                            world.setBlockState(pos, Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS)
+                    BlockPos.betweenClosed(wallPos, oppositeWallPos).forEach(pos ->
+                            world.setBlock(pos, Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS)
                     );
-                    world.setBlockState(wallPos, Blocks.PUMPKIN.getDefaultState(), NOTIFY_LISTENERS);
+                    world.setBlock(wallPos, Blocks.PUMPKIN.defaultBlockState(), UPDATE_CLIENTS);
                 }
             }
         });
@@ -894,14 +891,14 @@ public class GeodesyCore {
      * @return The position on the wall (with wall offset).
      * @author Kevinthegreat
      */
-    private static BlockPos getWallPos(@NotNull IterableBlockBox geode, BlockPos blockPos, Direction direction) {
+    private static BlockPos getWallPos(@NotNull IterableBoundingBox geode, BlockPos blockPos, Direction direction) {
         return switch (direction) {
-            case EAST -> new BlockPos(geode.getMaxX() + WALL_OFFSET, blockPos.getY(), blockPos.getZ());
-            case WEST -> new BlockPos(geode.getMinX() - WALL_OFFSET, blockPos.getY(), blockPos.getZ());
-            case UP -> new BlockPos(blockPos.getX(), geode.getMaxY() + WALL_OFFSET, blockPos.getZ());
-            case DOWN -> new BlockPos(blockPos.getX(), geode.getMinY() - WALL_OFFSET, blockPos.getZ());
-            case SOUTH -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.getMaxZ() + WALL_OFFSET);
-            case NORTH -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.getMinZ() - WALL_OFFSET);
+            case EAST -> new BlockPos(geode.maxX() + WALL_OFFSET, blockPos.getY(), blockPos.getZ());
+            case WEST -> new BlockPos(geode.minX() - WALL_OFFSET, blockPos.getY(), blockPos.getZ());
+            case UP -> new BlockPos(blockPos.getX(), geode.maxY() + WALL_OFFSET, blockPos.getZ());
+            case DOWN -> new BlockPos(blockPos.getX(), geode.minY() - WALL_OFFSET, blockPos.getZ());
+            case SOUTH -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.maxZ() + WALL_OFFSET);
+            case NORTH -> new BlockPos(blockPos.getX(), blockPos.getY(), geode.minZ() - WALL_OFFSET);
         };
     }
 
@@ -913,55 +910,55 @@ public class GeodesyCore {
          * SB[L>]SSSB
          */
         // Blocker block.
-        world.setBlockState(blockerPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+        world.setBlock(blockerPos, Blocks.OBSIDIAN.defaultBlockState(), UPDATE_CLIENTS);
         // Clear out the machine marker blocks.
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 2), Blocks.AIR.getDefaultState(), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, 1);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 2), Blocks.AIR.defaultBlockState(), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, 1);
         // First layer: piston, 2 slime
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionAlong.getOpposite()), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), stickyBlock.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 2), stickyBlock.getDefaultState(), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, 1);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, directionAlong.getOpposite()), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), stickyBlock.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 2), stickyBlock.defaultBlockState(), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, 1);
         // Second layer: redstone lamp, observer, slime (order is important)
-        world.setBlockState(pos.offset(directionUp, 2), stickyBlock.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), Blocks.OBSERVER.getDefaultState().with(Properties.FACING, directionUp), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.REDSTONE_LAMP.getDefaultState(), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, 1);
+        world.setBlock(pos.relative(directionUp, 2), stickyBlock.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), Blocks.OBSERVER.defaultBlockState().setValue(BlockStateProperties.FACING, directionUp), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.REDSTONE_LAMP.defaultBlockState(), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, 1);
         // Third layer: observer, slime, slime
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.OBSERVER.getDefaultState().with(Properties.FACING, directionAlong.getOpposite()), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), stickyBlock.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 2), stickyBlock.getDefaultState(), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, 1);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.OBSERVER.defaultBlockState().setValue(BlockStateProperties.FACING, directionAlong.getOpposite()), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), stickyBlock.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 2), stickyBlock.defaultBlockState(), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, 1);
         // Fourth layer: piston, slime
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionAlong), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), stickyBlock.getDefaultState(), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, 1);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, directionAlong), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), stickyBlock.defaultBlockState(), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, 1);
         // Fifth layer: slime, piston
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.SLIME_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionAlong.getOpposite()), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, 2);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.SLIME_BLOCK.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, directionAlong.getOpposite()), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, 2);
         // [SKIP!] Seventh layer: slime, note block
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.SLIME_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), Blocks.NOTE_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, -1);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.SLIME_BLOCK.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), Blocks.NOTE_BLOCK.defaultBlockState(), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, -1);
         // [GO BACK!] Sixth layer: slime, observer
         // This one is tricky, we initially set the observer in a wrong direction
         // so the note block tune change is not triggered.
-        world.setBlockState(pos.offset(directionUp, 1), Blocks.OBSERVER.getDefaultState().with(Properties.FACING, directionUp), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.SLIME_BLOCK.getDefaultState(), NOTIFY_LISTENERS);
-        world.setBlockState(pos.offset(directionUp, 1), Blocks.OBSERVER.getDefaultState().with(Properties.FACING, directionAlong), NOTIFY_LISTENERS);
-        pos = pos.offset(directionAlong, 2);
+        world.setBlock(pos.relative(directionUp, 1), Blocks.OBSERVER.defaultBlockState().setValue(BlockStateProperties.FACING, directionUp), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.SLIME_BLOCK.defaultBlockState(), UPDATE_CLIENTS);
+        world.setBlock(pos.relative(directionUp, 1), Blocks.OBSERVER.defaultBlockState().setValue(BlockStateProperties.FACING, directionAlong), UPDATE_CLIENTS);
+        pos = pos.relative(directionAlong, 2);
         // [SKIP AGAIN!] Eighth layer: blocker
-        world.setBlockState(pos.offset(directionUp, 0), Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+        world.setBlock(pos.relative(directionUp, 0), Blocks.OBSIDIAN.defaultBlockState(), UPDATE_CLIENTS);
 
         // Also blocker on the other end (the other wall).
-        world.setBlockState(oppositeWallPos, Blocks.OBSIDIAN.getDefaultState(), NOTIFY_LISTENERS);
+        world.setBlock(oppositeWallPos, Blocks.OBSIDIAN.defaultBlockState(), UPDATE_CLIENTS);
 
         // Return the position of the observer that can trigger the machine.
         // It will be used later (in separate logic) to create the trigger wiring.
-        return pos.offset(directionUp, 1);
+        return pos.relative(directionUp, 1);
     }
 
     @SuppressWarnings("SameParameterValue")
@@ -969,82 +966,82 @@ public class GeodesyCore {
         // Platform
         for (int i = 0; i < 6; i++)
             for (int j = 0; j < 3; j++)
-                world.setBlockState(startPos.offset(directionMain, i).offset(directionSide, j), FULL_BLOCK.getDefaultState());
+                world.setBlockAndUpdate(startPos.relative(directionMain, i).relative(directionSide, j), FULL_BLOCK.defaultBlockState());
 
         // Four solid blocks
-        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 1).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
-        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 2).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
-        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 1).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
-        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 2).offset(Direction.UP, 1), FULL_BLOCK.getDefaultState());
+        world.setBlockAndUpdate(startPos.relative(directionMain, 0).relative(directionSide, 1).relative(Direction.UP, 1), FULL_BLOCK.defaultBlockState());
+        world.setBlockAndUpdate(startPos.relative(directionMain, 0).relative(directionSide, 2).relative(Direction.UP, 1), FULL_BLOCK.defaultBlockState());
+        world.setBlockAndUpdate(startPos.relative(directionMain, 5).relative(directionSide, 1).relative(Direction.UP, 1), FULL_BLOCK.defaultBlockState());
+        world.setBlockAndUpdate(startPos.relative(directionMain, 5).relative(directionSide, 2).relative(Direction.UP, 1), FULL_BLOCK.defaultBlockState());
 
         // Lever
-        world.setBlockState(startPos.offset(directionMain, -1).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.LEVER.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()).with(Properties.POWERED, true));
+        world.setBlockAndUpdate(startPos.relative(directionMain, -1).relative(directionSide, 2).relative(Direction.UP, 1), Blocks.LEVER.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, directionMain.getOpposite()).setValue(BlockStateProperties.POWERED, true));
 
         // Four redstone dusts
-        BlockState redstoneDustPlus = Blocks.REDSTONE_WIRE.getDefaultState()
-                .with(Properties.EAST_WIRE_CONNECTION, WireConnection.SIDE)
-                .with(Properties.WEST_WIRE_CONNECTION, WireConnection.SIDE)
-                .with(Properties.NORTH_WIRE_CONNECTION, WireConnection.SIDE)
-                .with(Properties.SOUTH_WIRE_CONNECTION, WireConnection.SIDE);
-        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 0).offset(Direction.UP, 1), redstoneDustPlus.with(Properties.POWER, 2));
-        world.setBlockState(startPos.offset(directionMain, 0).offset(directionSide, 2).offset(Direction.UP, 2), redstoneDustPlus);
-        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 0).offset(Direction.UP, 1), redstoneDustPlus);
-        world.setBlockState(startPos.offset(directionMain, 5).offset(directionSide, 2).offset(Direction.UP, 2), redstoneDustPlus);
+        BlockState redstoneDustPlus = Blocks.REDSTONE_WIRE.defaultBlockState()
+                .setValue(BlockStateProperties.EAST_REDSTONE, RedstoneSide.SIDE)
+                .setValue(BlockStateProperties.WEST_REDSTONE, RedstoneSide.SIDE)
+                .setValue(BlockStateProperties.NORTH_REDSTONE, RedstoneSide.SIDE)
+                .setValue(BlockStateProperties.SOUTH_REDSTONE, RedstoneSide.SIDE);
+        world.setBlockAndUpdate(startPos.relative(directionMain, 0).relative(directionSide, 0).relative(Direction.UP, 1), redstoneDustPlus.setValue(BlockStateProperties.POWER, 2));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 0).relative(directionSide, 2).relative(Direction.UP, 2), redstoneDustPlus);
+        world.setBlockAndUpdate(startPos.relative(directionMain, 5).relative(directionSide, 0).relative(Direction.UP, 1), redstoneDustPlus);
+        world.setBlockAndUpdate(startPos.relative(directionMain, 5).relative(directionSide, 2).relative(Direction.UP, 2), redstoneDustPlus);
 
         // Two redstone blocks
-        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 0).offset(Direction.UP, 1), Blocks.REDSTONE_BLOCK.getDefaultState());
-        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.REDSTONE_BLOCK.getDefaultState());
+        world.setBlockAndUpdate(startPos.relative(directionMain, 3).relative(directionSide, 0).relative(Direction.UP, 1), Blocks.REDSTONE_BLOCK.defaultBlockState());
+        world.setBlockAndUpdate(startPos.relative(directionMain, 3).relative(directionSide, 2).relative(Direction.UP, 2), Blocks.REDSTONE_BLOCK.defaultBlockState());
 
         // Dropper (41 sticks)
-        world.setBlockState(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.DROPPER.getDefaultState().with(Properties.FACING, directionMain));
-        DropperBlockEntity dropper = (DropperBlockEntity) world.getBlockEntity(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 1));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 2).relative(directionSide, 1).relative(Direction.UP, 1), Blocks.DROPPER.defaultBlockState().setValue(BlockStateProperties.FACING, directionMain));
+        DropperBlockEntity dropper = (DropperBlockEntity) world.getBlockEntity(startPos.relative(directionMain, 2).relative(directionSide, 1).relative(Direction.UP, 1));
         if (dropper != null) {
-            ItemStack sticks41 = Items.STICK.getDefaultStack();
+            ItemStack sticks41 = Items.STICK.getDefaultInstance();
             sticks41.setCount(41);
-            dropper.setStack(0, sticks41);
-            dropper.markDirty();
+            dropper.setItem(0, sticks41);
+            dropper.setChanged();
         }
 
         // Hopper (4 stacks + 49 sticks)
-        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite()));
-        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite())); // invisible block bug????
-        HopperBlockEntity hopper = (HopperBlockEntity) world.getBlockEntity(startPos.offset(directionMain, 3).offset(directionSide, 2).offset(Direction.UP, 1));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 3).relative(directionSide, 2).relative(Direction.UP, 1), Blocks.HOPPER.defaultBlockState().setValue(BlockStateProperties.FACING_HOPPER, directionMain.getOpposite()));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 3).relative(directionSide, 2).relative(Direction.UP, 1), Blocks.HOPPER.defaultBlockState().setValue(BlockStateProperties.FACING_HOPPER, directionMain.getOpposite())); // invisible block bug????
+        HopperBlockEntity hopper = (HopperBlockEntity) world.getBlockEntity(startPos.relative(directionMain, 3).relative(directionSide, 2).relative(Direction.UP, 1));
         if (hopper != null) {
-            ItemStack sticks64 = Items.STICK.getDefaultStack();
+            ItemStack sticks64 = Items.STICK.getDefaultInstance();
             sticks64.setCount(64);
-            ItemStack sticks49 = Items.STICK.getDefaultStack();
+            ItemStack sticks49 = Items.STICK.getDefaultInstance();
             sticks49.setCount(49);
-            hopper.setStack(0, sticks64.copy());
-            hopper.setStack(1, sticks64.copy());
-            hopper.setStack(2, sticks64.copy());
-            hopper.setStack(3, sticks64.copy());
-            hopper.setStack(4, sticks49);
-            hopper.markDirty();
+            hopper.setItem(0, sticks64.copy());
+            hopper.setItem(1, sticks64.copy());
+            hopper.setItem(2, sticks64.copy());
+            hopper.setItem(3, sticks64.copy());
+            hopper.setItem(4, sticks49);
+            hopper.setChanged();
         }
 
         // The other two hoppers (empty)
-        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite()));
-        world.setBlockState(startPos.offset(directionMain, 3).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain.getOpposite())); // invisible block bug????
-        world.setBlockState(startPos.offset(directionMain, 2).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.HOPPER.getDefaultState().with(Properties.HOPPER_FACING, directionMain));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 3).relative(directionSide, 1).relative(Direction.UP, 1), Blocks.HOPPER.defaultBlockState().setValue(BlockStateProperties.FACING_HOPPER, directionMain.getOpposite()));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 3).relative(directionSide, 1).relative(Direction.UP, 1), Blocks.HOPPER.defaultBlockState().setValue(BlockStateProperties.FACING_HOPPER, directionMain.getOpposite())); // invisible block bug????
+        world.setBlockAndUpdate(startPos.relative(directionMain, 2).relative(directionSide, 2).relative(Direction.UP, 1), Blocks.HOPPER.defaultBlockState().setValue(BlockStateProperties.FACING_HOPPER, directionMain));
 
         // Four comparators
-        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain));
-        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain));
-        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 1).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()));
-        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 2).offset(Direction.UP, 1), Blocks.COMPARATOR.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 1).relative(directionSide, 1).relative(Direction.UP, 1), Blocks.COMPARATOR.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, directionMain));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 1).relative(directionSide, 2).relative(Direction.UP, 1), Blocks.COMPARATOR.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, directionMain));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 4).relative(directionSide, 1).relative(Direction.UP, 1), Blocks.COMPARATOR.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, directionMain.getOpposite()));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 4).relative(directionSide, 2).relative(Direction.UP, 1), Blocks.COMPARATOR.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, directionMain.getOpposite()));
 
         // Note block
-        world.setBlockState(startPos.offset(directionMain, 2).offset(directionSide, 1).offset(Direction.UP, 2), Blocks.NOTE_BLOCK.getDefaultState());
+        world.setBlockAndUpdate(startPos.relative(directionMain, 2).relative(directionSide, 1).relative(Direction.UP, 2), Blocks.NOTE_BLOCK.defaultBlockState());
 
         // Four sticky pistons
-        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 0).offset(Direction.UP, 1), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain));
-        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 0).offset(Direction.UP, 1), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain.getOpposite()));
-        world.setBlockState(startPos.offset(directionMain, 1).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain));
-        world.setBlockState(startPos.offset(directionMain, 4).offset(directionSide, 2).offset(Direction.UP, 2), Blocks.STICKY_PISTON.getDefaultState().with(Properties.FACING, directionMain.getOpposite()));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 1).relative(directionSide, 0).relative(Direction.UP, 1), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, directionMain));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 4).relative(directionSide, 0).relative(Direction.UP, 1), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, directionMain.getOpposite()));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 1).relative(directionSide, 2).relative(Direction.UP, 2), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, directionMain));
+        world.setBlockAndUpdate(startPos.relative(directionMain, 4).relative(directionSide, 2).relative(Direction.UP, 2), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, directionMain.getOpposite()));
 
         // Torch gotta be last
-        BlockPos torchPos = startPos.offset(directionMain, -1);
-        world.setBlockState(torchPos, Blocks.REDSTONE_WALL_TORCH.getDefaultState().with(Properties.HORIZONTAL_FACING, directionMain.getOpposite()).with(Properties.LIT, false));
+        BlockPos torchPos = startPos.relative(directionMain, -1);
+        world.setBlockAndUpdate(torchPos, Blocks.REDSTONE_WALL_TORCH.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, directionMain.getOpposite()).setValue(BlockStateProperties.LIT, false));
         return torchPos;
     }
 
@@ -1054,22 +1051,22 @@ public class GeodesyCore {
      * We use a weak reference, so we don't keep the player around (we don't own it).
      */
 
-    private WeakReference<ServerPlayerEntity> player;
+    private WeakReference<ServerPlayer> player;
 
-    public void setPlayerEntity(ServerPlayerEntity player) {
+    public void setPlayerEntity(ServerPlayer player) {
         if (this.player == null || this.player.get() != player) this.player = new WeakReference<>(player);
     }
 
-    private void sendCommandFeedback(Text message) {
-        ServerPlayerEntity serverPlayerEntity = player.get();
+    private void sendCommandFeedback(Component message) {
+        ServerPlayer serverPlayerEntity = player.get();
         if (serverPlayerEntity == null) {
             LOGGER.error("Player went away????");
             return;
         }
-        serverPlayerEntity.sendMessage(message);
+        serverPlayerEntity.sendSystemMessage(message);
     }
 
     private void sendCommandFeedback(String format, Object... args) {
-        sendCommandFeedback(Text.of(String.format(format, args)));
+        sendCommandFeedback(Component.nullToEmpty(String.format(format, args)));
     }
 }

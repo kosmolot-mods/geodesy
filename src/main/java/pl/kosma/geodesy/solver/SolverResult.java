@@ -1,6 +1,6 @@
 package pl.kosma.geodesy.solver;
 
-import net.minecraft.util.math.Direction;
+import net.minecraft.core.Direction;
 
 import java.util.ArrayList;
 import java.util.Collections;
