@@ -1,13 +1,13 @@
 package pl.kosma.geodesy;
 
 import com.google.common.collect.Sets;
+import it.unimi.dsi.fastutil.Pair;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.Tuple;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.*;
@@ -60,7 +60,7 @@ public class GeodesyCore {
     private List<BlockPos> buddingAmethystPositions;
     @Nullable
     // The following list must contain all amethyst clusters in the area.
-    private List<Tuple<BlockPos, Direction>> amethystClusterPositions;
+    private List<Pair<BlockPos, Direction>> amethystClusterPositions;
 
     // The directions used in the last /geodesy project command.
     private Direction @Nullable [] lastProjectedDirections;
@@ -161,12 +161,12 @@ public class GeodesyCore {
         // fall on them and get stuck.
         AtomicInteger clustersLeft = new AtomicInteger();
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
-            if (world.getBlockState(blockPosDirectionPair.getA()).getBlock() == Blocks.AMETHYST_CLUSTER) {
+            if (world.getBlockState(blockPosDirectionPair.left()).getBlock() == Blocks.AMETHYST_CLUSTER) {
                 clustersLeft.getAndIncrement();
-                world.setBlock(blockPosDirectionPair.getA(), switch (blockPosDirectionPair.getB()) {
+                world.setBlock(blockPosDirectionPair.left(), switch (blockPosDirectionPair.right()) {
                     case DOWN -> Blocks.SPRUCE_BUTTON.defaultBlockState().setValue(BlockStateProperties.ATTACH_FACE, AttachFace.CEILING);
                     case UP -> Blocks.SPRUCE_BUTTON.defaultBlockState().setValue(BlockStateProperties.ATTACH_FACE, AttachFace.FLOOR);
-                    default -> Blocks.SPRUCE_BUTTON.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, blockPosDirectionPair.getB());
+                    default -> Blocks.SPRUCE_BUTTON.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, blockPosDirectionPair.right());
                 }, UPDATE_CLIENTS);
             }
         });
@@ -200,10 +200,6 @@ public class GeodesyCore {
         sendCommandFeedback("---");
 
         MinecraftServer server = world.getServer();
-        if (server == null) {
-            sendCommandFeedback("Server instance not found. Are you sure you're running this on the server?");
-            return;
-        }
 
         // Validate that we have the required state.
         if (geode == null) {
@@ -834,7 +830,7 @@ public class GeodesyCore {
             for (Direction direction : Direction.values()) {
                 BlockPos budPos = blockPos.relative(direction);
                 if (world.getBlockState(budPos).getBlock() == Blocks.AIR) {
-                    amethystClusterPositions.add(new Tuple<>(budPos, direction));
+                    amethystClusterPositions.add(Pair.of(budPos, direction));
                 }
             }
         });
@@ -843,10 +839,10 @@ public class GeodesyCore {
     /**
      * Set all the clusters positions to cluster blocks if it is currently air.
      */
-    private void growClusters(@NotNull List<Tuple<BlockPos, Direction>> amethystClusterPositions) {
+    private void growClusters(@NotNull List<Pair<BlockPos, Direction>> amethystClusterPositions) {
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
-            if (world.getBlockState(blockPosDirectionPair.getA()).getBlock() == Blocks.AIR) {
-                world.setBlockAndUpdate(blockPosDirectionPair.getA(), Blocks.AMETHYST_CLUSTER.defaultBlockState().setValue(AmethystClusterBlock.FACING, blockPosDirectionPair.getB()));
+            if (world.getBlockState(blockPosDirectionPair.left()).getBlock() == Blocks.AIR) {
+                world.setBlockAndUpdate(blockPosDirectionPair.left(), Blocks.AMETHYST_CLUSTER.defaultBlockState().setValue(AmethystClusterBlock.FACING, blockPosDirectionPair.right()));
             }
         });
     }
@@ -859,7 +855,7 @@ public class GeodesyCore {
      * @param direction The direction to project the geode to.
      * @author Kosma Moczek, Kevinthegreat
      */
-    private void projectGeode(@NotNull IterableBoundingBox geode, List<BlockPos> buddingAmethystPositions, List<Tuple<BlockPos, Direction>> amethystClusterPositions, Direction direction) {
+    private void projectGeode(@NotNull IterableBoundingBox geode, List<BlockPos> buddingAmethystPositions, List<Pair<BlockPos, Direction>> amethystClusterPositions, Direction direction) {
         // Mark wall for slices with budding amethysts.
         buddingAmethystPositions.forEach(blockPos -> {
             BlockPos wallPos = getWallPos(geode, blockPos, direction);
@@ -868,9 +864,9 @@ public class GeodesyCore {
         // Mark wall for slices that needs to be harvested and have no budding amethysts.
         amethystClusterPositions.forEach(blockPosDirectionPair -> {
             // Check if the cluster is harvested.
-            if (world.getBlockState(blockPosDirectionPair.getA()).getBlock() == Blocks.AMETHYST_CLUSTER) {
-                BlockPos wallPos = getWallPos(geode, blockPosDirectionPair.getA(), direction);
-                BlockPos oppositeWallPos = getWallPos(geode, blockPosDirectionPair.getA(), direction.getOpposite());
+            if (world.getBlockState(blockPosDirectionPair.left()).getBlock() == Blocks.AMETHYST_CLUSTER) {
+                BlockPos wallPos = getWallPos(geode, blockPosDirectionPair.left(), direction);
+                BlockPos oppositeWallPos = getWallPos(geode, blockPosDirectionPair.left(), direction.getOpposite());
                 // Check if the slice is marked with budding amethyst.
                 if (world.getBlockState(wallPos).getBlock() != Blocks.CRYING_OBSIDIAN) {
                     // Mark all clusters in the slice as harvested.
