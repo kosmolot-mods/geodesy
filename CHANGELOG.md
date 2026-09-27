@@ -1,6 +1,6 @@
-## Geodesy 3.3 for 26.2
+## Geodesy 3.3 for 26.2 and 26.3
 
-Update to 26.2
+Update to 26.2 and 26.3
 
 
 ## Geodesy 3.2 for 26.1
