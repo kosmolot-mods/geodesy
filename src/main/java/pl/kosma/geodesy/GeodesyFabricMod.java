@@ -32,9 +32,9 @@ public class GeodesyFabricMod implements ModInitializer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger("GeodesyFabricMod");
 
-    static private final Map<UUID, GeodesyCore> perPlayerCore = new HashMap<>();
+    private static final Map<UUID, GeodesyCore> perPlayerCore = new HashMap<>();
 
-    private GeodesyCore getPerPlayerCore(@Nullable ServerPlayer player) {
+    private static GeodesyCore getPerPlayerCore(@Nullable ServerPlayer player) {
         UUID uuid = player != null ? player.getUUID() : null;
         if (!perPlayerCore.containsKey(uuid)) {
             perPlayerCore.put(uuid, new GeodesyCore());

@@ -247,7 +247,7 @@ public class GeodesyCore {
                 .toArray(CompletableFuture[]::new);
 
         solveFuture = CompletableFuture.allOf(futures)
-                .thenRun(() -> server.execute(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready.")));
+                .thenRunAsync(() -> sendCommandFeedback("Solve complete. Run /geodesy assemble when ready."), server);
     }
 
     private @NonNull CompletableFuture<Void> solveFace(@NotNull MinecraftServer server, @NotNull IterableBoundingBox geode, SolverConfig config, FaceGrid faceGrid) {
@@ -258,7 +258,7 @@ public class GeodesyCore {
                     sendCommandFeedback("  %s: Failed to solve - %s", faceGrid.direction(), e.getMessage());
                     return SolverResult.empty(faceGrid);
                 })
-                .thenAccept(result -> server.execute(() -> {
+                .thenAcceptAsync(result -> {
                     // Apply the solution to the world (must be on main thread)
                     applySolverResult(geode, result.direction(), result);
 
@@ -273,7 +273,7 @@ public class GeodesyCore {
                             result.solveTimeMs(),
                             result.timedOut() ? " (timed out)" : ""
                     );
-                }));
+                }, server);
     }
 
     // Clears sticky blocks and mob heads for a face. Allows re-running /geodesy solve.

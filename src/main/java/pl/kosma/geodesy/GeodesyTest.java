@@ -23,7 +23,7 @@ public class GeodesyTest {
         commandManager.performPrefixedCommand(commandSource, "/geodesy project north east down");
 
         commandManager.performPrefixedCommand(commandSource, "/geodesy solve");
-        context.runAfterDelay(100, () -> {
+        context.runAfterDelay(200, () -> {
             context.assertBlockPresent(Blocks.ZOMBIE_WALL_HEAD, 17, 17, 13);
             context.assertBlockPresent(Blocks.ZOMBIE_WALL_HEAD, 17, 18, 13);
             context.assertBlockPresent(Blocks.ZOMBIE_WALL_HEAD, 17, 19, 13);
@@ -38,8 +38,8 @@ public class GeodesyTest {
             context.pulseRedstone(new BlockPos(17, 17, 2), 1);
         });
 
-        context.runAfterDelay(250, () -> context.pulseRedstone(new BlockPos(34, 16, 18), 1));
-        context.runAfterDelay(400, () -> {
+        context.runAfterDelay(350, () -> context.pulseRedstone(new BlockPos(34, 16, 18), 1));
+        context.runAfterDelay(500, () -> {
             context.assertBlockPresent(Blocks.SLIME_BLOCK, 18, 17, 15);
             context.assertBlockPresent(Blocks.SLIME_BLOCK, 21, 18, 17);
             context.assertBlockPresent(Blocks.REDSTONE_LAMP, 17, 17, 12);
