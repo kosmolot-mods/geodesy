@@ -99,9 +99,9 @@ blocks) that maximize coverage of pumpkin blocks while respecting constraints:
 
 The command accepts optional parameters:
 
-* `/geodesy solve` - Use default settings (cost of 1.0, 5 second timeout)
-* `/geodesy solve (cost)` - Set cost threshold (1.0-12.0)
-* `/geodesy solve (cost) (timeout)` - Set cost threshold and timeout in seconds (1-300)
+* `/geodesy solve` - Use default settings (2 second timeout, cost of 1.0)
+* `/geodesy solve (timeout)` - Set timeout in seconds (1-300); cost stays at the default of 1.0
+* `/geodesy solve (timeout) (cost)` - Set timeout in seconds (1-300) and cost threshold (1.0-12.0)
 
 The **cost** parameter controls the tradeoff between coverage and number of flying machines:
 
