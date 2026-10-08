@@ -136,8 +136,24 @@ obsidian block, three green mob heads (zombie heads) indicate a flying machine.
 ### Step 7: Assemble
 
 Run `/geodesy assemble` to "push" the sticky block structures inside the obsidian frame
-and generate flying machines at locations that you marked. The redstone clock is also
-generated for your convenience - just connect it.
+and generate flying machines at locations that you marked. The hopper clock is also
+generated above the farm - just connect it.
+
+Assemble fills that clock for you. If you save the build as a schematic and place it
+again, put the sticks back by hand. Schematic pastes usually keep the blocks and drop
+the container contents. The clock only keeps time if these containers start with the
+counts below (346 sticks in total):
+
+* **Dropper** with the note block on top, facing west: **41 sticks** in the first slot.
+  Leave the other slots empty. It points into the hopper directly west of it.
+* **Hopper** one block west and one block north of that dropper, facing east:
+  **305 sticks** — four stacks of 64 and one stack of 49. It points into the hopper
+  directly north of the dropper, and that hopper points back into it.
+* Leave the other two hoppers empty: the one directly west of the dropper, and the
+  one directly north of the dropper.
+
+How those containers run, and the period the counts produce, is described in
+[How the Hopper Clock works](#how-the-hopper-clock-works).
 
 ![Assembled farm structure.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode7.png)
 
@@ -147,6 +163,40 @@ The rest is up to you! Add trigger wiring and collection system. When adding rep
 wiring, make sure to set them to maximum delay.  Again, watch ilmango's video for more information.
 
 ![Finished farm.](https://raw.githubusercontent.com/kosma/geodesy-fabric/master/assets/geode8.png)
+
+## How the Hopper Clock works
+
+The clock `/geodesy assemble` builds is a multiplicative hopper-dropper clock. The
+305 sticks are the base timer. The 41 sticks multiply that timer into the long
+period the farm runs on.
+
+A hopper pushes one item every 8 game ticks (0.4 seconds). A redstone block locks
+one hopper of a facing pair, so the sticks can only move one way. When the source
+hopper runs empty, comparators and sticky pistons slide that block onto the other
+hopper and the sticks travel back.
+
+On the north side, the 305 sticks make that round trip. One short cycle is:
+
+* 305 sticks × 0.4 seconds × 2 directions = **244 seconds** (4 minutes 4 seconds)
+
+Each short cycle slides the upper redstone block past the note block, and the note
+block clicks. That pulse fires the dropper once, so it pushes exactly one stick into
+the hopper it faces. That hopper stays locked, and the sticks collect there. After
+41 short cycles the dropper is empty. The lower redstone block then swaps sides, the
+locked hopper unlocks, and it feeds the sticks back into the dropper, one stick per
+short cycle.
+
+The output flips each time those 41 sticks finish a one-way trip. That flip is what
+the farm trigger is wired to:
+
+* 41 × 244 seconds = **10004 seconds** (2 hours 46 minutes 44 seconds)
+
+A full cycle, with every stick back where it started, is twice that: **5 hours
+33 minutes 28 seconds**. The same number is `hopper sticks × dropper sticks × 1.6`
+seconds. Piston updates shave a few ticks off each short cycle, so a real run
+finishes about a minute under that. Changing either count scales the period by the
+same amount. Keep the 305 sticks in that one hopper (a hopper holds 320) and the
+41 sticks in the dropper.
 
 ## Credits
 
